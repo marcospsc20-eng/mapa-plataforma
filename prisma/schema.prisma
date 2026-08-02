@@ -1,0 +1,122 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ------------------------------------------------------
+// 1. FAMÍLIAS E USUÁRIOS
+// ------------------------------------------------------
+
+model Family {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  missions  Mission[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  familyId  String
+  name      String
+  email     String?  @unique
+  role      String   @default("CHILD") // PARENT ou CHILD
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  progress        ChildProgress?
+  missionLogs     MissionLog[]
+  journalEntries  JournalEntry[]
+  observatoryLogs ObservatoryInsight[]
+}
+
+// ------------------------------------------------------
+// 2. PROGRESSO E HABILIDADES (O MAPA)
+// ------------------------------------------------------
+
+model ChildProgress {
+  id            String @id @default(uuid())
+  userId        String @unique
+  totalXp       Int    @default(0)
+  level         Int    @default(1)
+
+  xpExplorador  Int    @default(0)
+  xpCriador     Int    @default(0)
+  xpComunicador Int    @default(0)
+  xpGuardiao    Int    @default(0)
+  xpAtleta      Int    @default(0)
+  xpCientista   Int    @default(0)
+
+  user          User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------
+// 3. BIBLIOTECA DE MISSÕES (AS CARTAS)
+// ------------------------------------------------------
+
+model Mission {
+  id            String       @id @default(uuid())
+  familyId      String?
+  title         String
+  description   String
+  skillArea     String       // EXPLORADOR, CRIADOR, COMUNICADOR, ATLETA, CIENTISTA, etc.
+  xpReward      Int          @default(25)
+  icon          String?
+  isAiGenerated Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+
+  family        Family?      @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  logs          MissionLog[]
+}
+
+model MissionLog {
+  id           String    @id @default(uuid())
+  userId       String
+  missionId    String
+  status       String    @default("AVAILABLE") // AVAILABLE, IN_PROGRESS, COMPLETED, SKIPPED
+  completedAt  DateTime?
+  feedbackText String?
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mission      Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------
+// 4. O DIÁRIO E BANCO DE MEMÓRIAS
+// ------------------------------------------------------
+
+model JournalEntry {
+  id        String   @id @default(uuid())
+  userId    String
+  question  String
+  type      String   @default("TEXT") // VOICE, TEXT, DRAWING
+  content   String?
+  mediaUrl  String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------
+// 5. O OBSERVATÓRIO (INSIGHTS PARA OS PAIS)
+// ------------------------------------------------------
+
+model ObservatoryInsight {
+  id        String   @id @default(uuid())
+  userId    String
+  category  String
+  trend     String
+  aiComment String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
