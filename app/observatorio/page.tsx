@@ -234,7 +234,7 @@ export default function Observatorio() {
                 <span className="text-xs text-slate-400 font-semibold block">CONTA LIVRE (80%)</span>
                 <span className="text-2xl font-bold text-blue-400">R$ 80,00</span>
                 <p className="text-xs text-slate-400 mt-1">
-                  Enviar para a conta de gastos (NextJoy / Bradesco).
+                  Transferência manual para a conta livre do Thales.
                 </p>
               </div>
 
