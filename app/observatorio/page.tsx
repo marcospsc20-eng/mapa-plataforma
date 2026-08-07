@@ -24,72 +24,103 @@ type ProgressoThales = {
   xpCientista: number;
 };
 
+type MissaoPendente = {
+  id: string;
+  titulo: string;
+  area: string;
+  xp: number;
+  filho: string;
+  feedbackText?: string | null;
+  missionId: string;
+  userId: string;
+};
+
+const areaLabel: Record<string, string> = {
+  EXPLORADOR: 'Inglês',
+  CRIADOR: 'Criatividade',
+  ATLETA: 'Atleta',
+  CIENTISTA: 'Ciência',
+  FAMILIA: 'Família',
+  LEITURA: 'Finanças & Foco',
+};
+
 export default function Observatorio() {
   const [solicitacaoPendente, setSolicitacaoPendente] = useState(true);
   const [transferenciaConfirmada, setTransferenciaConfirmada] = useState(false);
 
   const [progresso, setProgresso] = useState<ProgressoThales | null>(null);
+  const [missoesParaAprovar, setMissoesParaAprovar] = useState<MissaoPendente[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
-  const [aprovando, setAprovando] = useState(false);
+  const [aprovandoId, setAprovandoId] = useState<string | null>(null);
 
-  // Lista de validação ainda local nesta etapa.
-  // No próximo passo ligamos ao diário/MissionLog do Neon.
-  const [missoesParaAprovar, setMissoesParaAprovar] = useState<
-    { id: string; titulo: string; area: string; xp: number; filho: string }[]
-  >([]);
-
-  async function carregarProgresso() {
+  async function carregarDados() {
     try {
       setCarregando(true);
       setErro('');
 
-      const resposta = await fetch('/api/progresso', { cache: 'no-store' });
-      if (!resposta.ok) {
+      const [resProgresso, resDiario] = await Promise.all([
+        fetch('/api/progresso', { cache: 'no-store' }),
+        fetch('/api/diario', { cache: 'no-store' }),
+      ]);
+
+      if (!resProgresso.ok) {
         throw new Error('Falha ao buscar progresso');
       }
 
-      const dados: ProgressoThales = await resposta.json();
-      setProgresso(dados);
+      if (!resDiario.ok) {
+        throw new Error('Falha ao buscar diário pendente');
+      }
+
+      const dadosProgresso: ProgressoThales = await resProgresso.json();
+      const dadosDiario: MissaoPendente[] = await resDiario.json();
+
+      setProgresso(dadosProgresso);
+      setMissoesParaAprovar(dadosDiario);
     } catch (error) {
       console.error(error);
-      setErro('Não foi possível carregar o progresso do Thales no Neon.');
+      setErro('Não foi possível carregar os dados reais do Neon.');
     } finally {
       setCarregando(false);
     }
   }
 
   useEffect(() => {
-    carregarProgresso();
+    carregarDados();
   }, []);
 
-  const aprovarMissao = async (id: string, xp: number) => {
+  const aprovarMissao = async (item: MissaoPendente) => {
     try {
-      setAprovando(true);
+      setAprovandoId(item.id);
 
       const resposta = await fetch('/api/progresso', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ xpAdicional: xp }),
+        body: JSON.stringify({
+          xpAdicional: item.xp,
+          logId: item.id,
+        }),
       });
-
-      if (!resposta.ok) {
-        throw new Error('Falha ao creditar XP');
-      }
 
       const resultado = await resposta.json();
 
-      setMissoesParaAprovar((lista) => lista.filter((m) => m.id !== id));
-      await carregarProgresso();
+      if (!resposta.ok) {
+        throw new Error(resultado?.error || 'Falha ao creditar XP');
+      }
+
+      // Por enquanto remove da tela; no próximo passo o status no Neon
+      // também será marcado como COMPLETED de forma oficial.
+      setMissoesParaAprovar((lista) => lista.filter((m) => m.id !== item.id));
+      await carregarDados();
 
       alert(
-        `Missão aprovada! +${xp} XP creditados ao Thales.\nTotal agora: ${resultado.totalXp} XP (nível ${resultado.level}).`
+        `Missão aprovada! +${item.xp} XP creditados ao Thales.\nTotal agora: ${resultado.totalXp} XP (nível ${resultado.level}).`
       );
     } catch (error) {
       console.error(error);
       alert('Erro ao aprovar missão no banco.');
     } finally {
-      setAprovando(false);
+      setAprovandoId(null);
     }
   };
 
@@ -130,7 +161,7 @@ export default function Observatorio() {
           {carregando && (
             <div className="flex items-center gap-3 text-slate-300 text-sm">
               <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-              Carregando progresso do banco...
+              Carregando dados do banco...
             </div>
           )}
 
@@ -222,10 +253,16 @@ export default function Observatorio() {
             <Clock className="w-5 h-5 text-indigo-400" /> Missões Aguardando Validação
           </h2>
 
-          {missoesParaAprovar.length === 0 ? (
+          {carregando && (
+            <div className="flex items-center gap-3 text-slate-300 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+              Buscando envios do diário no Neon...
+            </div>
+          )}
+
+          {!carregando && missoesParaAprovar.length === 0 ? (
             <p className="text-slate-400 text-sm italic">
-              Nenhuma missão aguardando validação agora. No próximo passo, o diário do Thales vai
-              gravar envios reais no Neon e eles aparecem aqui.
+              Nenhuma missão aguardando validação agora.
             </p>
           ) : (
             <div className="space-y-3">
@@ -234,17 +271,26 @@ export default function Observatorio() {
                   key={m.id}
                   className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-950 p-4 rounded-2xl border border-slate-800 gap-4"
                 >
-                  <div>
-                    <span className="text-xs font-bold text-indigo-400">{m.area}</span>
+                  <div className="space-y-1">
+                    <span className="text-xs font-bold text-indigo-400">
+                      {areaLabel[m.area] || m.area}
+                    </span>
                     <h3 className="font-bold text-white">{m.titulo}</h3>
-                    <p className="text-xs text-slate-400">Recompensa: +{m.xp} XP</p>
+                    <p className="text-xs text-slate-400">
+                      {m.filho} · Recompensa: +{m.xp} XP
+                    </p>
+                    {m.feedbackText && (
+                      <p className="text-sm text-slate-300 mt-2 bg-slate-900 border border-slate-800 rounded-xl p-3">
+                        “{m.feedbackText}”
+                      </p>
+                    )}
                   </div>
                   <button
-                    onClick={() => aprovarMissao(m.id, m.xp)}
-                    disabled={aprovando}
+                    onClick={() => aprovarMissao(m)}
+                    disabled={aprovandoId === m.id}
                     className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold text-xs rounded-xl transition cursor-pointer"
                   >
-                    {aprovando ? 'Validando...' : 'Validar e Conceder XP'}
+                    {aprovandoId === m.id ? 'Validando...' : 'Validar e Conceder XP'}
                   </button>
                 </div>
               ))}
