@@ -10,6 +10,7 @@ import {
   Loader2,
   Zap,
   Award,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -35,6 +36,12 @@ type MissaoPendente = {
   userId: string;
 };
 
+type ToastState = {
+  tipo: 'sucesso' | 'erro';
+  titulo: string;
+  mensagem: string;
+} | null;
+
 const areaLabel: Record<string, string> = {
   EXPLORADOR: 'Inglês',
   CRIADOR: 'Criatividade',
@@ -53,6 +60,14 @@ export default function Observatorio() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [aprovandoId, setAprovandoId] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState>(null);
+
+  function mostrarToast(tipo: 'sucesso' | 'erro', titulo: string, mensagem: string) {
+    setToast({ tipo, titulo, mensagem });
+    window.setTimeout(() => {
+      setToast(null);
+    }, 4500);
+  }
 
   async function carregarDados() {
     try {
@@ -108,17 +123,21 @@ export default function Observatorio() {
         throw new Error(resultado?.error || 'Falha ao creditar XP');
       }
 
-      // Por enquanto remove da tela; no próximo passo o status no Neon
-      // também será marcado como COMPLETED de forma oficial.
       setMissoesParaAprovar((lista) => lista.filter((m) => m.id !== item.id));
       await carregarDados();
 
-      alert(
-        `Missão aprovada! +${item.xp} XP creditados ao Thales.\nTotal agora: ${resultado.totalXp} XP (nível ${resultado.level}).`
+      mostrarToast(
+        'sucesso',
+        'Missão aprovada',
+        `+${item.xp} XP creditados ao Thales. Total agora: ${resultado.totalXp} XP (nível ${resultado.level}).`
       );
     } catch (error) {
       console.error(error);
-      alert('Erro ao aprovar missão no banco.');
+      mostrarToast(
+        'erro',
+        'Não foi possível aprovar',
+        'Erro ao aprovar a missão no banco. Tente de novo em instantes.'
+      );
     } finally {
       setAprovandoId(null);
     }
@@ -298,6 +317,38 @@ export default function Observatorio() {
           )}
         </div>
       </div>
+
+      {/* Toast interno — substitui o alert feio do navegador */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[100] w-[min(92vw,24rem)] animate-in fade-in">
+          <div
+            className={`rounded-2xl border shadow-2xl p-4 flex items-start gap-3 ${
+              toast.tipo === 'sucesso'
+                ? 'bg-emerald-950/95 border-emerald-500/40 text-emerald-50'
+                : 'bg-rose-950/95 border-rose-500/40 text-rose-50'
+            }`}
+          >
+            <div className="mt-0.5">
+              {toast.tipo === 'sucesso' ? (
+                <CheckCircle className="w-5 h-5 text-emerald-400" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-rose-400" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm">{toast.titulo}</p>
+              <p className="text-sm opacity-90 mt-1 leading-relaxed">{toast.mensagem}</p>
+            </div>
+            <button
+              onClick={() => setToast(null)}
+              className="text-white/60 hover:text-white transition shrink-0"
+              aria-label="Fechar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
