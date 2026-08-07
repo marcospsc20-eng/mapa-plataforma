@@ -45,6 +45,11 @@ type MissaoCard = {
   tagBg: string;
 };
 
+type ProgressoApi = {
+  totalXp: number;
+  level: number;
+};
+
 const skillVisual: Record<
   string,
   {
@@ -121,8 +126,10 @@ export default function Home() {
   const [missaoSelecionada, setMissaoSelecionada] = useState<MissaoCard | null>(null);
   const [respostaDiario, setRespostaDiario] = useState('');
   const [enviadoComSucesso, setEnviadoComSucesso] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
   const [xpTotal, setXpTotal] = useState(150);
+  const [nivel, setNivel] = useState(2);
   const [missoes, setMissoes] = useState<MissaoCard[]>([]);
   const [carregandoMissoes, setCarregandoMissoes] = useState(true);
   const [erroMissoes, setErroMissoes] = useState('');
@@ -134,20 +141,31 @@ export default function Home() {
   useEffect(() => {
     let ativo = true;
 
-    async function carregarMissoes() {
+    async function carregarDados() {
       try {
         setCarregandoMissoes(true);
         setErroMissoes('');
 
-        const resposta = await fetch('/api/missoes', { cache: 'no-store' });
-        if (!resposta.ok) {
+        const [resMissoes, resProgresso] = await Promise.all([
+          fetch('/api/missoes', { cache: 'no-store' }),
+          fetch('/api/progresso', { cache: 'no-store' }),
+        ]);
+
+        if (!resMissoes.ok) {
           throw new Error('Falha ao buscar missões');
         }
 
-        const dados: MissaoApi[] = await resposta.json();
+        const dadosMissoes: MissaoApi[] = await resMissoes.json();
         if (!ativo) return;
 
-        setMissoes(dados.map(mapMissao));
+        setMissoes(dadosMissoes.map(mapMissao));
+
+        if (resProgresso.ok) {
+          const dadosProgresso: ProgressoApi = await resProgresso.json();
+          if (!ativo) return;
+          setXpTotal(dadosProgresso.totalXp);
+          setNivel(dadosProgresso.level);
+        }
       } catch (error) {
         console.error(error);
         if (!ativo) return;
@@ -157,24 +175,51 @@ export default function Home() {
       }
     }
 
-    carregarMissoes();
+    carregarDados();
 
     return () => {
       ativo = false;
     };
   }, []);
 
-  const enviarDiarioBordo = () => {
+  const enviarDiarioBordo = async () => {
+    if (!missaoSelecionada) return;
+
     if (!respostaDiario.trim()) {
       return alert('Por favor, digite seu registro antes de enviar.');
     }
 
-    setEnviadoComSucesso(true);
-    setTimeout(() => {
-      setEnviadoComSucesso(false);
-      setMissaoSelecionada(null);
-      setRespostaDiario('');
-    }, 2000);
+    try {
+      setEnviando(true);
+
+      const resposta = await fetch('/api/diario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          missionId: missaoSelecionada.id,
+          feedbackText: respostaDiario.trim(),
+        }),
+      });
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados?.error || 'Falha ao enviar diário');
+      }
+
+      setEnviadoComSucesso(true);
+
+      setTimeout(() => {
+        setEnviadoComSucesso(false);
+        setMissaoSelecionada(null);
+        setRespostaDiario('');
+      }, 2000);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao enviar o registro para o Neon. Tente de novo.');
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
@@ -200,7 +245,7 @@ export default function Home() {
                 <span className="block text-[11px] text-slate-500 font-semibold uppercase">
                   Nível
                 </span>
-                <span className="text-lg font-bold text-slate-200">2 - Explorador</span>
+                <span className="text-lg font-bold text-slate-200">{nivel} - Explorador</span>
               </div>
             </div>
             <div className="h-8 w-px bg-slate-800"></div>
@@ -417,6 +462,7 @@ export default function Home() {
           <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
             <button
               onClick={() => {
+                if (enviando) return;
                 setMissaoSelecionada(null);
                 setRespostaDiario('');
                 setEnviadoComSucesso(false);
@@ -431,7 +477,7 @@ export default function Home() {
                 <CheckCircle2 className="w-14 h-14 text-emerald-400 mx-auto" />
                 <h3 className="text-xl font-bold text-white">Registro enviado!</h3>
                 <p className="text-slate-400 text-sm">
-                  A missão foi enviada para validação no Observatório.
+                  A missão foi gravada no Neon e enviada para validação no Observatório.
                 </p>
               </div>
             ) : (
@@ -455,16 +501,27 @@ export default function Home() {
                     onChange={(e) => setRespostaDiario(e.target.value)}
                     rows={5}
                     placeholder="Escreva aqui seu registro..."
-                    className="w-full rounded-xl bg-slate-950 border border-slate-700 text-slate-100 p-3 text-sm outline-none focus:border-indigo-500"
+                    disabled={enviando}
+                    className="w-full rounded-xl bg-slate-950 border border-slate-700 text-slate-100 p-3 text-sm outline-none focus:border-indigo-500 disabled:opacity-60"
                   />
                 </div>
 
                 <button
                   onClick={enviarDiarioBordo}
-                  className="mt-4 w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={enviando}
+                  className="mt-4 w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Send className="w-4 h-4" />
-                  Enviar para Validação
+                  {enviando ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Enviar para Validação
+                    </>
+                  )}
                 </button>
               </>
             )}
