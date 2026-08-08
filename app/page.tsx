@@ -24,6 +24,8 @@ import {
   Users,
   FlaskConical,
   Loader2,
+  ShieldCheck,
+  ArrowLeft,
 } from 'lucide-react';
 
 type MissaoApi = {
@@ -49,6 +51,8 @@ type ProgressoApi = {
   totalXp: number;
   level: number;
 };
+
+type PapelAtivo = 'escolha' | 'explorador';
 
 const skillVisual: Record<
   string,
@@ -120,7 +124,7 @@ function mapMissao(api: MissaoApi): MissaoCard {
 }
 
 export default function Home() {
-  const [iniciouAventura, setIniciouAventura] = useState(false);
+  const [papelAtivo, setPapelAtivo] = useState<PapelAtivo>('escolha');
   const [abaAtiva, setAbaAtiva] = useState<'missoes' | 'cofre'>('missoes');
 
   const [missaoSelecionada, setMissaoSelecionada] = useState<MissaoCard | null>(null);
@@ -224,57 +228,66 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 font-sans">
-      {!iniciouAventura ? (
+      {papelAtivo === 'escolha' ? (
         <div className="max-w-xl w-full text-center space-y-8 bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-xl">
           <div className="flex justify-center items-center gap-2 text-slate-400 font-medium text-xs tracking-widest uppercase">
             <Sparkles className="w-4 h-4 text-indigo-400" />
-            <span>Plataforma Codinome MAPA</span>
+            <span>THAJU · Método MAPA</span>
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold text-white tracking-tight">Olá, Thales</h1>
+            <h1 className="text-3xl font-bold text-white tracking-tight">
+              Quem está entrando?
+            </h1>
             <p className="text-slate-400 text-base">
-              Sua central de missões e progresso diário está pronta.
+              Cada papel tem um caminho diferente. O Explorador registra missões.
+              O Responsável valida e cuida das regras da casa.
             </p>
           </div>
 
-          <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 flex justify-around items-center">
-            <div className="flex items-center gap-3">
-              <Award className="w-6 h-6 text-indigo-400" />
-              <div className="text-left">
-                <span className="block text-[11px] text-slate-500 font-semibold uppercase">
-                  Nível
-                </span>
-                <span className="text-lg font-bold text-slate-200">{nivel} - Explorador</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
+            <button
+              onClick={() => {
+                setPapelAtivo('explorador');
+                setAbaAtiva('missoes');
+              }}
+              className="group bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-indigo-500/40 rounded-2xl p-5 transition cursor-pointer text-left"
+            >
+              <div className="w-11 h-11 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 flex items-center justify-center mb-4">
+                <Compass className="w-5 h-5" />
               </div>
-            </div>
-            <div className="h-8 w-px bg-slate-800"></div>
-            <div className="flex items-center gap-3">
-              <Zap className="w-6 h-6 text-indigo-400" />
-              <div className="text-left">
-                <span className="block text-[11px] text-slate-500 font-semibold uppercase">
-                  Total XP
-                </span>
-                <span className="text-lg font-bold text-slate-200">{xpTotal} XP</span>
+              <h2 className="text-lg font-bold text-white">Explorador</h2>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Painel do Thales: missões, diário de bordo e cofre.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-indigo-300">
+                Entrar nas missões
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </span>
+            </button>
+
+            <a
+              href="/observatorio"
+              className="group bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 transition text-left"
+            >
+              <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center justify-center mb-4">
+                <ShieldCheck className="w-5 h-5" />
               </div>
-            </div>
+              <h2 className="text-lg font-bold text-white">Responsável</h2>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Observatório da Família: validar missões, mesada e progresso real.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-emerald-300">
+                Abrir Observatório
+                <Telescope className="w-3.5 h-3.5" />
+              </span>
+            </a>
           </div>
 
-          <button
-            onClick={() => setIniciouAventura(true)}
-            className="w-full py-3.5 px-6 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-md transition flex items-center justify-center gap-2 text-base cursor-pointer"
-          >
-            <Compass className="w-5 h-5 text-indigo-200" />
-            Acessar Painel
-          </button>
-
-          <a
-            href="/observatorio"
-            className="w-full py-3.5 px-6 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl border border-slate-700 shadow-md transition flex items-center justify-center gap-2 text-base"
-          >
-            <Telescope className="w-5 h-5 text-indigo-300" />
-            Abrir Observatório
-          </a>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            No próximo passo vamos colocar um PIN só para o Responsável.
+            Assim o Explorador não consegue validar a própria missão.
+          </p>
         </div>
       ) : (
         <div className="max-w-4xl w-full space-y-6">
@@ -284,27 +297,24 @@ export default function Home() {
                 <Rocket className="w-6 h-6" />
               </div>
               <div>
+                <div className="text-[11px] uppercase tracking-wider font-semibold text-indigo-300 mb-1">
+                  Área do Explorador
+                </div>
                 <h2 className="text-xl font-bold text-white">Planeta do Thales</h2>
                 <p className="text-slate-400 text-xs">
-                  Gestão de missões, tarefas e cofre de investimento.
+                  Missões, diário de bordo e cofre de investimento.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
               <button
-                onClick={() => setIniciouAventura(false)}
-                className="text-xs font-medium bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-xl text-slate-300 border border-slate-700/50 transition cursor-pointer"
+                onClick={() => setPapelAtivo('escolha')}
+                className="text-xs font-medium bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-xl text-slate-300 border border-slate-700/50 transition cursor-pointer flex items-center gap-1.5"
               >
-                Início
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Trocar perfil
               </button>
-
-              <a
-                href="/observatorio"
-                className="text-xs font-medium bg-indigo-600 hover:bg-indigo-500 px-3.5 py-2 rounded-xl text-white border border-indigo-500/50 transition"
-              >
-                Observatório
-              </a>
 
               <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
                 <button
@@ -327,6 +337,29 @@ export default function Home() {
                 >
                   Cofre
                 </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Award className="w-5 h-5 text-indigo-400" />
+              <div>
+                <span className="block text-[11px] text-slate-500 font-semibold uppercase">
+                  Nível
+                </span>
+                <span className="text-sm font-bold text-slate-200">
+                  {nivel} - Explorador
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Zap className="w-5 h-5 text-indigo-400" />
+              <div>
+                <span className="block text-[11px] text-slate-500 font-semibold uppercase">
+                  Total XP
+                </span>
+                <span className="text-sm font-bold text-slate-200">{xpTotal} XP</span>
               </div>
             </div>
           </div>
@@ -381,7 +414,9 @@ export default function Home() {
                           </span>
                         </div>
 
-                        <h4 className="mt-4 text-base font-bold text-white">{missao.titulo}</h4>
+                        <h4 className="mt-4 text-base font-bold text-white">
+                          {missao.titulo}
+                        </h4>
                         <p className="mt-2 text-sm text-slate-400 leading-relaxed">
                           {missao.descricao}
                         </p>
@@ -408,49 +443,67 @@ export default function Home() {
                 <h3 className="text-lg font-bold text-white">Cofre do Thales</h3>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                  <div className="flex items-center gap-2 text-slate-400 text-xs uppercase font-semibold">
-                    <Wallet className="w-4 h-4" />
-                    Saldo livre
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-slate-400 text-xs uppercase font-semibold">
+                      <Wallet className="w-4 h-4" />
+                      Uso livre (80%)
+                    </div>
+                    <span className="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400">
+                      Gastos pessoais
+                    </span>
                   </div>
                   <p className="mt-3 text-2xl font-bold text-white">
                     R$ {saldoLivre.toFixed(2)}
                   </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Saldo acumulado para saques ou compras autorizadas.
+                  </p>
                 </div>
 
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                  <div className="flex items-center gap-2 text-slate-400 text-xs uppercase font-semibold">
-                    <PiggyBank className="w-4 h-4" />
-                    Poupança investida
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-slate-400 text-xs uppercase font-semibold">
+                      <TrendingUp className="w-4 h-4" />
+                      Poupança orbital (20%)
+                    </div>
+                    <span className="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400">
+                      Investimento
+                    </span>
                   </div>
                   <p className="mt-3 text-2xl font-bold text-white">
                     R$ {poupancaInvestida.toFixed(2)}
                   </p>
-                </div>
-
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                  <div className="flex items-center gap-2 text-slate-400 text-xs uppercase font-semibold">
-                    <TrendingUp className="w-4 h-4" />
-                    Rendimento do mês
-                  </div>
-                  <p className="mt-3 text-2xl font-bold text-emerald-400">
-                    + R$ {rendimentoMes.toFixed(2)}
+                  <p className="mt-2 text-xs text-emerald-400">
+                    Rendimento do mês: +R$ {rendimentoMes.toFixed(2)}
                   </p>
                 </div>
               </div>
 
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
                 <div className="flex items-start gap-3">
                   <Bell className="w-5 h-5 text-indigo-400 mt-0.5" />
                   <div>
-                    <h4 className="font-semibold text-white">Regra da mesada</h4>
+                    <h4 className="font-semibold text-white">Solicitação de Mesada</h4>
                     <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-                      80% fica livre para uso e 20% vai para a poupança. O Observatório dos pais
-                      acompanha as transferências e o progresso das missões.
+                      Depois de concluir o ciclo de missões, o Explorador pede a
+                      transferência. Só o Responsável confirma no Observatório.
                     </p>
                   </div>
                 </div>
+
+                <button
+                  onClick={() =>
+                    alert(
+                      'Pedido registrado na tela. No próximo passo ligamos isso de verdade no Neon.'
+                    )
+                  }
+                  className="w-full sm:w-auto px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Bell className="w-4 h-4" />
+                  Solicitar Transferência de Saldo
+                </button>
               </div>
             </div>
           )}
@@ -477,7 +530,8 @@ export default function Home() {
                 <CheckCircle2 className="w-14 h-14 text-emerald-400 mx-auto" />
                 <h3 className="text-xl font-bold text-white">Registro enviado!</h3>
                 <p className="text-slate-400 text-sm">
-                  A missão foi gravada no Neon e enviada para validação no Observatório.
+                  A missão foi gravada no Neon e enviada para validação no
+                  Observatório.
                 </p>
               </div>
             ) : (
@@ -489,7 +543,9 @@ export default function Home() {
                   <h3 className="mt-2 text-xl font-bold text-white">
                     {missaoSelecionada.titulo}
                   </h3>
-                  <p className="mt-2 text-sm text-slate-400">{missaoSelecionada.descricao}</p>
+                  <p className="mt-2 text-sm text-slate-400">
+                    {missaoSelecionada.descricao}
+                  </p>
                 </div>
 
                 <div className="mt-5">
