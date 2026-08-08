@@ -11,6 +11,9 @@ import {
   Zap,
   Award,
   X,
+  Lock,
+  LogOut,
+  KeyRound,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -52,12 +55,19 @@ const areaLabel: Record<string, string> = {
 };
 
 export default function Observatorio() {
+  const [autorizado, setAutorizado] = useState(false);
+  const [verificandoSessao, setVerificandoSessao] = useState(true);
+  const [pin, setPin] = useState('');
+  const [erroPin, setErroPin] = useState('');
+  const [enviandoPin, setEnviandoPin] = useState(false);
+  const [saindo, setSaindo] = useState(false);
+
   const [solicitacaoPendente, setSolicitacaoPendente] = useState(true);
   const [transferenciaConfirmada, setTransferenciaConfirmada] = useState(false);
 
   const [progresso, setProgresso] = useState<ProgressoThales | null>(null);
   const [missoesParaAprovar, setMissoesParaAprovar] = useState<MissaoPendente[]>([]);
-  const [carregando, setCarregando] = useState(true);
+  const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [aprovandoId, setAprovandoId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
@@ -67,6 +77,20 @@ export default function Observatorio() {
     window.setTimeout(() => {
       setToast(null);
     }, 4500);
+  }
+
+  async function verificarSessao() {
+    try {
+      setVerificandoSessao(true);
+      const res = await fetch('/api/auth/responsavel', { cache: 'no-store' });
+      const dados = await res.json();
+      setAutorizado(Boolean(dados?.ok));
+    } catch (error) {
+      console.error(error);
+      setAutorizado(false);
+    } finally {
+      setVerificandoSessao(false);
+    }
   }
 
   async function carregarDados() {
@@ -101,8 +125,69 @@ export default function Observatorio() {
   }
 
   useEffect(() => {
-    carregarDados();
+    verificarSessao();
   }, []);
+
+  useEffect(() => {
+    if (autorizado) {
+      carregarDados();
+    }
+  }, [autorizado]);
+
+  const entrarComPin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setErroPin('');
+
+    const pinLimpo = pin.trim();
+
+    if (!/^\d{4}$/.test(pinLimpo)) {
+      setErroPin('Digite um PIN com 4 números.');
+      return;
+    }
+
+    try {
+      setEnviandoPin(true);
+
+      const res = await fetch('/api/auth/responsavel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinLimpo }),
+      });
+
+      const dados = await res.json();
+
+      if (!res.ok || !dados?.ok) {
+        setErroPin(dados?.error || 'PIN incorreto.');
+        setPin('');
+        return;
+      }
+
+      setAutorizado(true);
+      setPin('');
+    } catch (error) {
+      console.error(error);
+      setErroPin('Não foi possível validar o PIN agora.');
+    } finally {
+      setEnviandoPin(false);
+    }
+  };
+
+  const sairDoObservatorio = async () => {
+    try {
+      setSaindo(true);
+      await fetch('/api/auth/responsavel', { method: 'DELETE' });
+      setAutorizado(false);
+      setProgresso(null);
+      setMissoesParaAprovar([]);
+      setPin('');
+      setErroPin('');
+    } catch (error) {
+      console.error(error);
+      mostrarToast('erro', 'Falha ao sair', 'Tente novamente em instantes.');
+    } finally {
+      setSaindo(false);
+    }
+  };
 
   const aprovarMissao = async (item: MissaoPendente) => {
     try {
@@ -148,6 +233,107 @@ export default function Observatorio() {
     setTransferenciaConfirmada(true);
   };
 
+  if (verificandoSessao) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-white p-4 sm:p-8 font-sans flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-300 text-sm">
+          <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
+          Verificando acesso do Responsável...
+        </div>
+      </main>
+    );
+  }
+
+  if (!autorizado) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-white p-4 sm:p-8 font-sans flex items-center justify-center">
+        <div className="w-full max-w-md space-y-6">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+            <div className="space-y-3 text-center">
+              <div className="mx-auto w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center justify-center">
+                <Lock className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wider font-semibold text-emerald-300 mb-1">
+                  Área restrita
+                </p>
+                <h1 className="text-2xl font-extrabold text-white">PIN do Responsável</h1>
+                <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                  Só Marcos ou Juliete entram aqui. O Explorador não pode validar a própria missão.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={entrarComPin} className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="pin-responsavel" className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
+                  Digite o PIN de 4 números
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
+                  <input
+                    id="pin-responsavel"
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={4}
+                    autoComplete="one-time-code"
+                    value={pin}
+                    onChange={(e) => {
+                      const soNumeros = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setPin(soNumeros);
+                      setErroPin('');
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500/60 rounded-2xl py-3.5 pl-11 pr-4 text-center text-2xl tracking-[0.45em] font-bold text-white outline-none transition"
+                    placeholder="••••"
+                  />
+                </div>
+              </div>
+
+              {erroPin && (
+                <div className="bg-rose-950/40 border border-rose-500/30 rounded-2xl px-4 py-3 text-rose-200 text-sm flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{erroPin}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={enviandoPin || pin.length !== 4}
+                className="w-full py-3.5 px-6 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-lg transition flex items-center justify-center gap-2 text-sm cursor-pointer"
+              >
+                {enviandoPin ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Validando...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    Entrar no Observatório
+                  </>
+                )}
+              </button>
+            </form>
+
+            <Link
+              href="/"
+              className="flex items-center justify-center gap-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Voltar à escolha de perfil
+            </Link>
+          </div>
+
+          <p className="text-center text-[11px] text-slate-600 leading-relaxed px-4">
+            PIN provisório da família: use o combinado em casa.
+            Depois vamos trocar e guardar só na Vercel.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-white p-4 sm:p-8 font-sans">
       <div className="max-w-5xl mx-auto space-y-8">
@@ -163,12 +349,23 @@ export default function Observatorio() {
             </p>
           </div>
 
-          <Link
-            href="/"
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
-          >
-            <ArrowLeft className="w-4 h-4" /> Voltar ao App do Thales
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <button
+              onClick={sairDoObservatorio}
+              disabled={saindo}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer"
+            >
+              {saindo ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+              Sair do Responsável
+            </button>
+
+            <Link
+              href="/"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
+            >
+              <ArrowLeft className="w-4 h-4" /> Voltar ao App do Thales
+            </Link>
+          </div>
         </div>
 
         <div className="bg-slate-900/80 p-6 rounded-3xl border border-slate-800 space-y-4">
