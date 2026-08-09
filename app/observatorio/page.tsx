@@ -13,7 +13,6 @@ import {
   X,
   Lock,
   LogOut,
-  KeyRound,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -39,6 +38,16 @@ type MissaoPendente = {
   userId: string;
 };
 
+type TransferenciaMesada = {
+  id: string;
+  amountFree: number;
+  amountSave: number;
+  status: string;
+  requestedAt: string;
+  completedAt: string | null;
+  note: string | null;
+};
+
 type ToastState = {
   tipo: 'sucesso' | 'erro';
   titulo: string;
@@ -54,22 +63,27 @@ const areaLabel: Record<string, string> = {
   LEITURA: 'Finanças & Foco',
 };
 
+function formatarReais(valor: number) {
+  return valor.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+}
+
 export default function Observatorio() {
-  const [autorizado, setAutorizado] = useState(false);
-  const [verificandoSessao, setVerificandoSessao] = useState(true);
+  const [autenticado, setAutenticado] = useState(false);
+  const [checandoSessao, setChecandoSessao] = useState(true);
   const [pin, setPin] = useState('');
   const [erroPin, setErroPin] = useState('');
-  const [enviandoPin, setEnviandoPin] = useState(false);
-  const [saindo, setSaindo] = useState(false);
-
-  const [solicitacaoPendente, setSolicitacaoPendente] = useState(true);
-  const [transferenciaConfirmada, setTransferenciaConfirmada] = useState(false);
+  const [entrando, setEntrando] = useState(false);
 
   const [progresso, setProgresso] = useState<ProgressoThales | null>(null);
   const [missoesParaAprovar, setMissoesParaAprovar] = useState<MissaoPendente[]>([]);
-  const [carregando, setCarregando] = useState(false);
+  const [mesadaPendente, setMesadaPendente] = useState<TransferenciaMesada | null>(null);
+  const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [aprovandoId, setAprovandoId] = useState<string | null>(null);
+  const [confirmandoMesada, setConfirmandoMesada] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
 
   function mostrarToast(tipo: 'sucesso' | 'erro', titulo: string, mensagem: string) {
@@ -81,15 +95,62 @@ export default function Observatorio() {
 
   async function verificarSessao() {
     try {
-      setVerificandoSessao(true);
+      setChecandoSessao(true);
       const res = await fetch('/api/auth/responsavel', { cache: 'no-store' });
+      if (!res.ok) {
+        setAutenticado(false);
+        return;
+      }
       const dados = await res.json();
-      setAutorizado(Boolean(dados?.ok));
+      setAutenticado(Boolean(dados?.ok || dados?.authenticated));
     } catch (error) {
       console.error(error);
-      setAutorizado(false);
+      setAutenticado(false);
     } finally {
-      setVerificandoSessao(false);
+      setChecandoSessao(false);
+    }
+  }
+
+  async function entrarComPin() {
+    try {
+      setEntrando(true);
+      setErroPin('');
+
+      const res = await fetch('/api/auth/responsavel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pin.trim() }),
+      });
+
+      const dados = await res.json();
+
+      if (!res.ok) {
+        setErroPin(dados?.error || 'PIN incorreto');
+        setAutenticado(false);
+        return;
+      }
+
+      setAutenticado(true);
+      setPin('');
+    } catch (error) {
+      console.error(error);
+      setErroPin('Não foi possível validar o PIN agora.');
+      setAutenticado(false);
+    } finally {
+      setEntrando(false);
+    }
+  }
+
+  async function sair() {
+    try {
+      await fetch('/api/auth/responsavel', {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setAutenticado(false);
+      setPin('');
     }
   }
 
@@ -98,9 +159,10 @@ export default function Observatorio() {
       setCarregando(true);
       setErro('');
 
-      const [resProgresso, resDiario] = await Promise.all([
+      const [resProgresso, resDiario, resMesada] = await Promise.all([
         fetch('/api/progresso', { cache: 'no-store' }),
         fetch('/api/diario', { cache: 'no-store' }),
+        fetch('/api/mesada', { cache: 'no-store' }),
       ]);
 
       if (!resProgresso.ok) {
@@ -115,7 +177,19 @@ export default function Observatorio() {
       const dadosDiario: MissaoPendente[] = await resDiario.json();
 
       setProgresso(dadosProgresso);
-      setMissoesParaAprovar(dadosDiario);
+      setMissoesParaAprovar(Array.isArray(dadosDiario) ? dadosDiario : []);
+
+      if (resMesada.ok) {
+        const dadosMesada = await resMesada.json();
+        if (dadosMesada?.hasPending && dadosMesada?.transfer) {
+          setMesadaPendente(dadosMesada.transfer);
+        } else {
+          setMesadaPendente(null);
+        }
+      } else {
+        // Se a API de mesada ainda não estiver no ar, não quebra o Observatório
+        setMesadaPendente(null);
+      }
     } catch (error) {
       console.error(error);
       setErro('Não foi possível carregar os dados reais do Neon.');
@@ -129,65 +203,10 @@ export default function Observatorio() {
   }, []);
 
   useEffect(() => {
-    if (autorizado) {
+    if (autenticado) {
       carregarDados();
     }
-  }, [autorizado]);
-
-  const entrarComPin = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setErroPin('');
-
-    const pinLimpo = pin.trim();
-
-    if (!/^\d{4}$/.test(pinLimpo)) {
-      setErroPin('Digite um PIN com 4 números.');
-      return;
-    }
-
-    try {
-      setEnviandoPin(true);
-
-      const res = await fetch('/api/auth/responsavel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: pinLimpo }),
-      });
-
-      const dados = await res.json();
-
-      if (!res.ok || !dados?.ok) {
-        setErroPin(dados?.error || 'PIN incorreto.');
-        setPin('');
-        return;
-      }
-
-      setAutorizado(true);
-      setPin('');
-    } catch (error) {
-      console.error(error);
-      setErroPin('Não foi possível validar o PIN agora.');
-    } finally {
-      setEnviandoPin(false);
-    }
-  };
-
-  const sairDoObservatorio = async () => {
-    try {
-      setSaindo(true);
-      await fetch('/api/auth/responsavel', { method: 'DELETE' });
-      setAutorizado(false);
-      setProgresso(null);
-      setMissoesParaAprovar([]);
-      setPin('');
-      setErroPin('');
-    } catch (error) {
-      console.error(error);
-      mostrarToast('erro', 'Falha ao sair', 'Tente novamente em instantes.');
-    } finally {
-      setSaindo(false);
-    }
-  };
+  }, [autenticado]);
 
   const aprovarMissao = async (item: MissaoPendente) => {
     try {
@@ -228,107 +247,120 @@ export default function Observatorio() {
     }
   };
 
-  const confirmarTransferencia = () => {
-    setSolicitacaoPendente(false);
-    setTransferenciaConfirmada(true);
+  const confirmarTransferencia = async () => {
+    if (!mesadaPendente || confirmandoMesada) return;
+
+    try {
+      setConfirmandoMesada(true);
+
+      const resposta = await fetch('/api/mesada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'confirmar',
+          transferId: mesadaPendente.id,
+        }),
+      });
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados?.error || 'Falha ao confirmar mesada');
+      }
+
+      setMesadaPendente(null);
+
+      mostrarToast(
+        'sucesso',
+        'Transferência confirmada',
+        dados?.alreadyCompleted
+          ? 'Esta mesada já estava marcada como concluída.'
+          : 'Mesada marcada como feita no Neon.'
+      );
+
+      await carregarDados();
+    } catch (error) {
+      console.error(error);
+      mostrarToast(
+        'erro',
+        'Não foi possível confirmar',
+        'Erro ao gravar a confirmação da mesada. Tente de novo.'
+      );
+    } finally {
+      setConfirmandoMesada(false);
+    }
   };
 
-  if (verificandoSessao) {
+  if (checandoSessao) {
     return (
-      <main className="min-h-screen bg-slate-950 text-white p-4 sm:p-8 font-sans flex items-center justify-center">
-        <div className="flex items-center gap-3 text-slate-300 text-sm">
-          <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
+      <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+        <div className="flex items-center gap-3 text-slate-300">
+          <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
           Verificando acesso do Responsável...
         </div>
       </main>
     );
   }
 
-  if (!autorizado) {
+  if (!autenticado) {
     return (
-      <main className="min-h-screen bg-slate-950 text-white p-4 sm:p-8 font-sans flex items-center justify-center">
-        <div className="w-full max-w-md space-y-6">
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-            <div className="space-y-3 text-center">
-              <div className="mx-auto w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center justify-center">
-                <Lock className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wider font-semibold text-emerald-300 mb-1">
-                  Área restrita
-                </p>
-                <h1 className="text-2xl font-extrabold text-white">PIN do Responsável</h1>
-                <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-                  Só Marcos ou Juliete entram aqui. O Explorador não pode validar a própria missão.
-                </p>
-              </div>
+      <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
+          <div className="space-y-2 text-center">
+            <div className="mx-auto w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center justify-center">
+              <Lock className="w-5 h-5" />
             </div>
-
-            <form onSubmit={entrarComPin} className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="pin-responsavel" className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                  Digite o PIN de 4 números
-                </label>
-                <div className="relative">
-                  <KeyRound className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
-                  <input
-                    id="pin-responsavel"
-                    type="password"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={4}
-                    autoComplete="one-time-code"
-                    value={pin}
-                    onChange={(e) => {
-                      const soNumeros = e.target.value.replace(/\D/g, '').slice(0, 4);
-                      setPin(soNumeros);
-                      setErroPin('');
-                    }}
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500/60 rounded-2xl py-3.5 pl-11 pr-4 text-center text-2xl tracking-[0.45em] font-bold text-white outline-none transition"
-                    placeholder="••••"
-                  />
-                </div>
-              </div>
-
-              {erroPin && (
-                <div className="bg-rose-950/40 border border-rose-500/30 rounded-2xl px-4 py-3 text-rose-200 text-sm flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>{erroPin}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={enviandoPin || pin.length !== 4}
-                className="w-full py-3.5 px-6 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-lg transition flex items-center justify-center gap-2 text-sm cursor-pointer"
-              >
-                {enviandoPin ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Validando...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" />
-                    Entrar no Observatório
-                  </>
-                )}
-              </button>
-            </form>
-
-            <Link
-              href="/"
-              className="flex items-center justify-center gap-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Voltar à escolha de perfil
-            </Link>
+            <h1 className="text-2xl font-bold text-white">Área do Responsável</h1>
+            <p className="text-sm text-slate-400">
+              Digite o PIN da família para abrir o Observatório.
+            </p>
           </div>
 
-          <p className="text-center text-[11px] text-slate-600 leading-relaxed px-4">
-            PIN provisório da família: use o combinado em casa.
-            Depois vamos trocar e guardar só na Vercel.
-          </p>
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-slate-300">
+              PIN
+            </label>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={8}
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') entrarComPin();
+              }}
+              placeholder="••••"
+              className="w-full rounded-xl bg-slate-950 border border-slate-700 text-white text-center text-2xl tracking-[0.4em] py-3 outline-none focus:border-emerald-500"
+            />
+            {erroPin && (
+              <p className="text-sm text-rose-300 bg-rose-950/40 border border-rose-500/30 rounded-xl px-3 py-2">
+                {erroPin}
+              </p>
+            )}
+          </div>
+
+          <button
+            onClick={entrarComPin}
+            disabled={entrando || pin.length < 4}
+            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold transition flex items-center justify-center gap-2"
+          >
+            {entrando ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Entrando...
+              </>
+            ) : (
+              'Entrar no Observatório'
+            )}
+          </button>
+
+          <Link
+            href="/"
+            className="flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-slate-200 transition"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Voltar ao início
+          </Link>
         </div>
       </main>
     );
@@ -349,19 +381,18 @@ export default function Observatorio() {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={sairDoObservatorio}
-              disabled={saindo}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer"
+              onClick={sair}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer"
             >
-              {saindo ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
-              Sair do Responsável
+              <LogOut className="w-4 h-4" />
+              Sair
             </button>
 
             <Link
               href="/"
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
             >
               <ArrowLeft className="w-4 h-4" /> Voltar ao App do Thales
             </Link>
@@ -415,21 +446,25 @@ export default function Observatorio() {
           )}
         </div>
 
-        {solicitacaoPendente ? (
+        {mesadaPendente ? (
           <div className="bg-gradient-to-r from-amber-950/60 to-slate-900 border border-amber-500/40 p-6 rounded-3xl space-y-4 shadow-xl">
             <div className="flex items-center gap-3 text-amber-400">
               <AlertCircle className="w-6 h-6 animate-bounce" />
               <h2 className="text-xl font-bold">Solicitação de Transferência Recebida!</h2>
             </div>
             <p className="text-slate-300 text-sm">
-              O Thales concluiu o ciclo de missões do mês e solicitou o envio da mesada para a conta
-              bancária.
+              O Thales pediu a mesada. Depois de fazer a transferência manual,
+              marque aqui como concluída.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-2">
               <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800">
-                <span className="text-xs text-slate-400 font-semibold block">CONTA LIVRE (80%)</span>
-                <span className="text-2xl font-bold text-blue-400">R$ 80,00</span>
+                <span className="text-xs text-slate-400 font-semibold block">
+                  CONTA LIVRE (80%)
+                </span>
+                <span className="text-2xl font-bold text-blue-400">
+                  {formatarReais(Number(mesadaPendente.amountFree || 0))}
+                </span>
                 <p className="text-xs text-slate-400 mt-1">
                   Transferência manual para a conta livre do Thales.
                 </p>
@@ -439,27 +474,44 @@ export default function Observatorio() {
                 <span className="text-xs text-slate-400 font-semibold block">
                   POUPANÇA ORBITAL (20%)
                 </span>
-                <span className="text-2xl font-bold text-purple-400">R$ 20,00</span>
+                <span className="text-2xl font-bold text-purple-400">
+                  {formatarReais(Number(mesadaPendente.amountSave || 0))}
+                </span>
                 <p className="text-xs text-slate-400 mt-1">
                   Aplicar na poupança/investimento do Thales.
                 </p>
               </div>
             </div>
 
+            {mesadaPendente.note && (
+              <p className="text-xs text-slate-400">
+                Observação: {mesadaPendente.note}
+              </p>
+            )}
+
             <button
               onClick={confirmarTransferencia}
-              className="py-3 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl shadow-lg transition flex items-center justify-center gap-2 text-sm cursor-pointer w-full sm:w-auto"
+              disabled={confirmandoMesada}
+              className="py-3 px-6 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold rounded-2xl shadow-lg transition flex items-center justify-center gap-2 text-sm cursor-pointer w-full sm:w-auto"
             >
-              <CheckCircle className="w-5 h-5" /> Confirmar Transferência Realizada
+              {confirmandoMesada ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Confirmando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5" />
+                  Confirmar Transferência Realizada
+                </>
+              )}
             </button>
           </div>
         ) : (
-          transferenciaConfirmada && (
-            <div className="bg-emerald-950/40 border border-emerald-500/30 p-4 rounded-2xl text-emerald-300 text-sm flex items-center gap-3">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
-              <span>
-                Transferência de mesada deste mês foi marcada como <strong>concluída</strong>.
-              </span>
+          !carregando && (
+            <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl text-slate-300 text-sm flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-slate-500" />
+              <span>Nenhuma solicitação de mesada pendente no momento.</span>
             </div>
           )
         )}
@@ -515,7 +567,6 @@ export default function Observatorio() {
         </div>
       </div>
 
-      {/* Toast interno — substitui o alert feio do navegador */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-[100] w-[min(92vw,24rem)] animate-in fade-in">
           <div

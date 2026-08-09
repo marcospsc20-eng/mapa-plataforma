@@ -17,8 +17,8 @@ model Family {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     User[]
-  missions  Mission[]
+  users    User[]
+  missions Mission[]
 }
 
 model User {
@@ -30,12 +30,13 @@ model User {
   avatarUrl String?
   createdAt DateTime @default(now())
 
-  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
-  progress        ChildProgress?
-  missionLogs     MissionLog[]
-  journalEntries  JournalEntry[]
-  observatoryLogs ObservatoryInsight[]
+  progress            ChildProgress?
+  missionLogs         MissionLog[]
+  journalEntries      JournalEntry[]
+  observatoryLogs     ObservatoryInsight[]
+  allowanceTransfers  AllowanceTransfer[]
 }
 
 // ------------------------------------------------------
@@ -43,19 +44,19 @@ model User {
 // ------------------------------------------------------
 
 model ChildProgress {
-  id            String @id @default(uuid())
-  userId        String @unique
-  totalXp       Int    @default(0)
-  level         Int    @default(1)
+  id     String @id @default(uuid())
+  userId String @unique
+  totalXp Int   @default(0)
+  level   Int   @default(1)
 
-  xpExplorador  Int    @default(0)
-  xpCriador     Int    @default(0)
-  xpComunicador Int    @default(0)
-  xpGuardiao    Int    @default(0)
-  xpAtleta      Int    @default(0)
-  xpCientista   Int    @default(0)
+  xpExplorador  Int @default(0)
+  xpCriador     Int @default(0)
+  xpComunicador Int @default(0)
+  xpGuardiao    Int @default(0)
+  xpAtleta      Int @default(0)
+  xpCientista   Int @default(0)
 
-  user          User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ------------------------------------------------------
@@ -63,30 +64,30 @@ model ChildProgress {
 // ------------------------------------------------------
 
 model Mission {
-  id            String       @id @default(uuid())
+  id            String   @id @default(uuid())
   familyId      String?
   title         String
   description   String
-  skillArea     String       // EXPLORADOR, CRIADOR, COMUNICADOR, ATLETA, CIENTISTA, etc.
-  xpReward      Int          @default(25)
+  skillArea     String
+  xpReward      Int      @default(25)
   icon          String?
-  isAiGenerated Boolean      @default(false)
-  createdAt     DateTime     @default(now())
+  isAiGenerated Boolean  @default(false)
+  createdAt     DateTime @default(now())
 
-  family        Family?      @relation(fields: [familyId], references: [id], onDelete: SetNull)
-  logs          MissionLog[]
+  family Family?      @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  logs   MissionLog[]
 }
 
 model MissionLog {
   id           String    @id @default(uuid())
   userId       String
   missionId    String
-  status       String    @default("AVAILABLE") // AVAILABLE, IN_PROGRESS, COMPLETED, SKIPPED
+  status       String    @default("AVAILABLE") // AVAILABLE, IN_PROGRESS, PENDING_VALIDATION, APPROVED, COMPLETED, SKIPPED
   completedAt  DateTime?
   feedbackText String?
 
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mission      Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mission Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
 }
 
 // ------------------------------------------------------
@@ -102,7 +103,7 @@ model JournalEntry {
   mediaUrl  String?
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ------------------------------------------------------
@@ -117,5 +118,22 @@ model ObservatoryInsight {
   aiComment String
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------
+// 6. MESADA / TRANSFERÊNCIA (COFRE)
+// ------------------------------------------------------
+
+model AllowanceTransfer {
+  id          String    @id @default(uuid())
+  userId      String
+  amountFree  Float
+  amountSave  Float
+  status      String    @default("PENDING") // PENDING, COMPLETED, CANCELLED
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+  note        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -54,6 +54,8 @@ type ProgressoApi = {
 
 type PapelAtivo = 'escolha' | 'explorador';
 
+type StatusMesada = 'idle' | 'pending' | 'success' | 'error';
+
 const skillVisual: Record<
   string,
   {
@@ -142,6 +144,10 @@ export default function Home() {
   const poupancaInvestida = 20.0;
   const rendimentoMes = 1.45;
 
+  const [solicitandoMesada, setSolicitandoMesada] = useState(false);
+  const [statusMesada, setStatusMesada] = useState<StatusMesada>('idle');
+  const [mensagemMesada, setMensagemMesada] = useState('');
+
   useEffect(() => {
     let ativo = true;
 
@@ -186,6 +192,37 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    let ativo = true;
+
+    async function carregarStatusMesada() {
+      try {
+        const res = await fetch('/api/mesada', { cache: 'no-store' });
+        if (!res.ok) return;
+
+        const dados = await res.json();
+        if (!ativo) return;
+
+        if (dados?.hasPending) {
+          setStatusMesada('pending');
+          setMensagemMesada(
+            'Pedido já enviado. Agora o Responsável confere no Observatório.'
+          );
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    if (papelAtivo === 'explorador') {
+      carregarStatusMesada();
+    }
+
+    return () => {
+      ativo = false;
+    };
+  }, [papelAtivo]);
+
   const enviarDiarioBordo = async () => {
     if (!missaoSelecionada) return;
 
@@ -223,6 +260,62 @@ export default function Home() {
       alert('Erro ao enviar o registro para o Neon. Tente de novo.');
     } finally {
       setEnviando(false);
+    }
+  };
+
+  const solicitarTransferencia = async () => {
+    if (solicitandoMesada || statusMesada === 'pending') return;
+
+    try {
+      setSolicitandoMesada(true);
+      setStatusMesada('idle');
+      setMensagemMesada('');
+
+      const resposta = await fetch('/api/mesada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'solicitar',
+          amountFree: saldoLivre,
+          amountSave: poupancaInvestida,
+          note: 'Solicitação de mesada do ciclo',
+        }),
+      });
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados?.error || 'Falha ao solicitar mesada');
+      }
+
+      if (dados?.alreadyPending) {
+        setStatusMesada('pending');
+        setMensagemMesada(
+          'Já existe um pedido pendente. O Responsável ainda não confirmou no Observatório.'
+        );
+        return;
+      }
+
+      setStatusMesada('success');
+      setMensagemMesada(
+        'Pedido gravado no Neon! O Responsável vai ver no Observatório.'
+      );
+
+      // Depois do sucesso, o botão fica no estado "pendente"
+      window.setTimeout(() => {
+        setStatusMesada('pending');
+        setMensagemMesada(
+          'Pedido enviado. Agora o Responsável confere no Observatório.'
+        );
+      }, 2500);
+    } catch (error) {
+      console.error(error);
+      setStatusMesada('error');
+      setMensagemMesada(
+        'Não foi possível gravar o pedido no Neon. Tente de novo em instantes.'
+      );
+    } finally {
+      setSolicitandoMesada(false);
     }
   };
 
@@ -285,8 +378,8 @@ export default function Home() {
           </div>
 
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            No próximo passo vamos colocar um PIN só para o Responsável.
-            Assim o Explorador não consegue validar a própria missão.
+            O Responsável entra com PIN no Observatório. Assim o Explorador não
+            valida a própria missão.
           </p>
         </div>
       ) : (
@@ -493,16 +586,41 @@ export default function Home() {
                   </div>
                 </div>
 
+                {mensagemMesada && (
+                  <div
+                    className={`rounded-xl border px-4 py-3 text-sm ${
+                      statusMesada === 'error'
+                        ? 'bg-rose-950/40 border-rose-500/30 text-rose-200'
+                        : statusMesada === 'success'
+                          ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200'
+                          : 'bg-amber-950/30 border-amber-500/30 text-amber-100'
+                    }`}
+                  >
+                    {mensagemMesada}
+                  </div>
+                )}
+
                 <button
-                  onClick={() =>
-                    alert(
-                      'Pedido registrado na tela. No próximo passo ligamos isso de verdade no Neon.'
-                    )
-                  }
-                  className="w-full sm:w-auto px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={solicitarTransferencia}
+                  disabled={solicitandoMesada || statusMesada === 'pending'}
+                  className="w-full sm:w-auto px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Bell className="w-4 h-4" />
-                  Solicitar Transferência de Saldo
+                  {solicitandoMesada ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Enviando pedido...
+                    </>
+                  ) : statusMesada === 'pending' ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Pedido já enviado
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="w-4 h-4" />
+                      Solicitar Transferência de Saldo
+                    </>
+                  )}
                 </button>
               </div>
             </div>
