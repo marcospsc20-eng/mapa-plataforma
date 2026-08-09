@@ -13,6 +13,8 @@ import {
   X,
   Lock,
   LogOut,
+  PlusCircle,
+  Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -54,6 +56,15 @@ type ToastState = {
   mensagem: string;
 } | null;
 
+const AREAS_MISSAO = [
+  { value: 'EXPLORADOR', label: 'Inglês / Explorador' },
+  { value: 'CRIADOR', label: 'Criatividade / Criador' },
+  { value: 'ATLETA', label: 'Corpo / Atleta' },
+  { value: 'CIENTISTA', label: 'Ciência / Cientista' },
+  { value: 'FAMILIA', label: 'Família' },
+  { value: 'LEITURA', label: 'Finanças & Foco / Leitura' },
+] as const;
+
 const areaLabel: Record<string, string> = {
   EXPLORADOR: 'Inglês',
   CRIADOR: 'Criatividade',
@@ -85,6 +96,14 @@ export default function Observatorio() {
   const [aprovandoId, setAprovandoId] = useState<string | null>(null);
   const [confirmandoMesada, setConfirmandoMesada] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
+
+  // Criar missão
+  const [tituloMissao, setTituloMissao] = useState('');
+  const [descricaoMissao, setDescricaoMissao] = useState('');
+  const [areaMissao, setAreaMissao] = useState<string>('EXPLORADOR');
+  const [xpMissao, setXpMissao] = useState('25');
+  const [criandoMissao, setCriandoMissao] = useState(false);
+  const [erroCriarMissao, setErroCriarMissao] = useState('');
 
   function mostrarToast(tipo: 'sucesso' | 'erro', titulo: string, mensagem: string) {
     setToast({ tipo, titulo, mensagem });
@@ -187,7 +206,6 @@ export default function Observatorio() {
           setMesadaPendente(null);
         }
       } else {
-        // Se a API de mesada ainda não estiver no ar, não quebra o Observatório
         setMesadaPendente(null);
       }
     } catch (error) {
@@ -291,6 +309,72 @@ export default function Observatorio() {
     }
   };
 
+  const criarMissao = async () => {
+    if (criandoMissao) return;
+
+    const titulo = tituloMissao.trim();
+    const description = descricaoMissao.trim();
+    const xpReward = Number(xpMissao);
+
+    if (!titulo) {
+      setErroCriarMissao('Informe o título da missão.');
+      return;
+    }
+
+    if (!description) {
+      setErroCriarMissao('Informe a descrição da missão.');
+      return;
+    }
+
+    if (!Number.isFinite(xpReward) || xpReward < 1 || xpReward > 500) {
+      setErroCriarMissao('XP inválido. Use um número entre 1 e 500.');
+      return;
+    }
+
+    try {
+      setCriandoMissao(true);
+      setErroCriarMissao('');
+
+      const resposta = await fetch('/api/missoes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: titulo,
+          description,
+          skillArea: areaMissao,
+          xpReward,
+        }),
+      });
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados?.error || 'Falha ao criar missão');
+      }
+
+      setTituloMissao('');
+      setDescricaoMissao('');
+      setAreaMissao('EXPLORADOR');
+      setXpMissao('25');
+
+      mostrarToast(
+        'sucesso',
+        'Missão criada',
+        `“${dados?.mission?.title || titulo}” já pode aparecer no painel do Thales.`
+      );
+    } catch (error) {
+      console.error(error);
+      const mensagem =
+        error instanceof Error
+          ? error.message
+          : 'Erro ao criar a missão no banco.';
+      setErroCriarMissao(mensagem);
+      mostrarToast('erro', 'Não foi possível criar', mensagem);
+    } finally {
+      setCriandoMissao(false);
+    }
+  };
+
   if (checandoSessao) {
     return (
       <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
@@ -317,9 +401,7 @@ export default function Observatorio() {
           </div>
 
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-slate-300">
-              PIN
-            </label>
+            <label className="block text-sm font-medium text-slate-300">PIN</label>
             <input
               type="password"
               inputMode="numeric"
@@ -377,7 +459,7 @@ export default function Observatorio() {
             </div>
             <h1 className="text-3xl font-extrabold text-white">Observatório da Família</h1>
             <p className="text-slate-400 text-sm">
-              Acompanhamento, aprovações e gestão da mesada do Thales.
+              Acompanhamento, aprovações, criação de missões e gestão da mesada do Thales.
             </p>
           </div>
 
@@ -444,6 +526,106 @@ export default function Observatorio() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* CRIAR MISSÃO */}
+        <div className="bg-slate-900/80 p-6 rounded-3xl border border-slate-800 space-y-5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0">
+              <PlusCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                Criar missão para o Thales
+              </h2>
+              <p className="text-sm text-slate-400 mt-1">
+                A missão vai para o Neon e aparece no painel do Explorador.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Título
+              </label>
+              <input
+                value={tituloMissao}
+                onChange={(e) => setTituloMissao(e.target.value)}
+                placeholder="Ex.: MISSÃO LEITURA DE HOJE"
+                className="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-4 py-3 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Descrição
+              </label>
+              <textarea
+                value={descricaoMissao}
+                onChange={(e) => setDescricaoMissao(e.target.value)}
+                rows={3}
+                placeholder="O que o Thales precisa fazer nesta missão?"
+                className="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-4 py-3 text-sm outline-none focus:border-indigo-500 resize-y"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Área
+              </label>
+              <select
+                value={areaMissao}
+                onChange={(e) => setAreaMissao(e.target.value)}
+                className="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-4 py-3 text-sm outline-none focus:border-indigo-500"
+              >
+                {AREAS_MISSAO.map((area) => (
+                  <option key={area.value} value={area.value}>
+                    {area.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                XP da recompensa
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={xpMissao}
+                onChange={(e) => setXpMissao(e.target.value)}
+                className="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-4 py-3 text-sm outline-none focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          {erroCriarMissao && (
+            <div className="bg-rose-950/40 border border-rose-500/30 rounded-2xl px-4 py-3 text-rose-200 text-sm flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{erroCriarMissao}</span>
+            </div>
+          )}
+
+          <button
+            onClick={criarMissao}
+            disabled={criandoMissao}
+            className="w-full sm:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+          >
+            {criandoMissao ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Salvando no Neon...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Publicar missão
+              </>
+            )}
+          </button>
         </div>
 
         {mesadaPendente ? (
