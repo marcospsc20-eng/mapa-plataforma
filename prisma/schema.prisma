@@ -32,11 +32,11 @@ model User {
 
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
-  progress            ChildProgress?
-  missionLogs         MissionLog[]
-  journalEntries      JournalEntry[]
-  observatoryLogs     ObservatoryInsight[]
-  allowanceTransfers  AllowanceTransfer[]
+  progress           ChildProgress?
+  missionLogs        MissionLog[]
+  journalEntries     JournalEntry[]
+  observatoryLogs    ObservatoryInsight[]
+  allowanceTransfers AllowanceTransfer[]
 }
 
 // ------------------------------------------------------
@@ -44,10 +44,10 @@ model User {
 // ------------------------------------------------------
 
 model ChildProgress {
-  id     String @id @default(uuid())
-  userId String @unique
-  totalXp Int   @default(0)
-  level   Int   @default(1)
+  id      String @id @default(uuid())
+  userId  String @unique
+  totalXp Int    @default(0)
+  level   Int    @default(1)
 
   xpExplorador  Int @default(0)
   xpCriador     Int @default(0)
@@ -60,22 +60,38 @@ model ChildProgress {
 }
 
 // ------------------------------------------------------
-// 3. BIBLIOTECA DE MISSÕES (AS CARTAS)
+// 3. MISSÕES FIXAS + TAREFA DO DIA
 // ------------------------------------------------------
+// Missão  = botão fixo do Thales (EXPLORADOR, CRIADOR...)
+// Tarefa  = o que o Responsável manda agora (activeTask + xpReward)
+// O Responsável NÃO cria botão novo: atualiza a tarefa da missão.
 
 model Mission {
-  id            String   @id @default(uuid())
+  id            String  @id @default(uuid())
   familyId      String?
   title         String
   description   String
   skillArea     String
-  xpReward      Int      @default(25)
+  xpReward      Int     @default(25)
   icon          String?
-  isAiGenerated Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  isAiGenerated Boolean @default(false)
+
+  /// Tarefa atual definida pelo Responsável.
+  /// Se estiver vazia, a tela usa description.
+  activeTask String @default("")
+
+  /// true = carta/botão fixo do painel
+  isTrack Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  /// Opcional = NÃO força reset com missões já existentes
+  updatedAt DateTime? @updatedAt
 
   family Family?      @relation(fields: [familyId], references: [id], onDelete: SetNull)
   logs   MissionLog[]
+
+  @@index([skillArea])
+  @@index([isTrack])
 }
 
 model MissionLog {
@@ -85,6 +101,10 @@ model MissionLog {
   status       String    @default("AVAILABLE") // AVAILABLE, IN_PROGRESS, PENDING_VALIDATION, APPROVED, COMPLETED, SKIPPED
   completedAt  DateTime?
   feedbackText String?
+
+  /// Cópia da tarefa/XP no momento do envio
+  taskSnapshot String?
+  xpSnapshot   Int?
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   mission Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
