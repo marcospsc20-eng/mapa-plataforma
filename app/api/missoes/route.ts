@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { prisma } from '../../../lib/prisma';
+import { prisma } from '../../../../lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const COOKIE_NAME = 'mapa_responsavel';
 
 function jsonSemCache(data: unknown, status = 200) {
   return NextResponse.json(data, {
@@ -16,139 +14,105 @@ function jsonSemCache(data: unknown, status = 200) {
   });
 }
 
-function getParentPin() {
-  return process.env.PARENT_PIN || '2580';
-}
-
-function makeToken(pin: string) {
-  return Buffer.from(`thaju-responsavel:${pin}`).toString('base64url');
-}
-
-function isResponsavelAutorizado() {
+function responsavelAutenticado() {
   const jar = cookies();
-  const cookie = jar.get(COOKIE_NAME)?.value;
-
-  if (!cookie) {
-    return false;
-  }
-
-  return cookie === makeToken(getParentPin());
-}
-
-type MissaoDoBanco = {
-  id: string;
-  familyId: string | null;
-  title: string;
-  description: string;
-  skillArea: string;
-  xpReward: number;
-  icon: string | null;
-  isAiGenerated: boolean;
-  activeTask: string;
-  isTrack: boolean;
-  createdAt: Date;
-  updatedAt: Date | null;
-};
-
-function formatarMissaoParaTela(missao: MissaoDoBanco) {
-  const tarefaAtual =
-    typeof missao.activeTask === 'string' && missao.activeTask.trim().length > 0
-      ? missao.activeTask.trim()
-      : missao.description;
-
-  return {
-    id: missao.id,
-    familyId: missao.familyId,
-    title: missao.title,
-
-    // A tela do Thales já usa o campo "description".
-    // Aqui ele recebe a tarefa atual, sem criar uma carta nova.
-    description: tarefaAtual,
-
-    baseDescription: missao.description,
-    activeTask: missao.activeTask || '',
-    skillArea: missao.skillArea,
-    xpReward: missao.xpReward,
-    icon: missao.icon,
-    isAiGenerated: missao.isAiGenerated,
-    isTrack: missao.isTrack,
-    createdAt: missao.createdAt,
-    updatedAt: missao.updatedAt,
-  };
+  const token = jar.get('mapa_responsavel')?.value;
+  return Boolean(token);
 }
 
 /**
- * GET /api/missoes
+ * PATCH /api/missoes/tarefa
+ * Responsável atualiza a TAREFA DO DIA de uma missão fixa (isTrack).
+ * NÃO cria card novo.
  *
- * Retorna as cartas fixas do painel do Thales.
- * Se houver duplicata antiga no banco, mantém somente a carta mais antiga
- * daquela área.
+ * Body JSON:
+ * {
+ *   "missionId": "uuid-da-missao-fixa",
+ *   "activeTask": "Ler um texto em inglês e contar 3 palavras novas",
+ *   "xpReward": 25   // opcional
+ * }
  */
-export async function GET() {
+export async function PATCH(request: Request) {
   try {
-    const todasAsMissoes = await prisma.mission.findMany({
-      where: {
-        isTrack: true,
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-    });
-
-    const primeiraPorArea = new Map<string, MissaoDoBanco>();
-
-    for (const missao of todasAsMissoes) {
-      const area = String(missao.skillArea || '').trim().toUpperCase();
-
-      if (!area) {
-        continue;
-      }
-
-      // Como a busca está em ordem crescente, a primeira é a carta original.
-      if (!primeiraPorArea.has(area)) {
-        primeiraPorArea.set(area, missao);
-      }
+    if (!responsavelAutenticado()) {
+      return jsonSemCache(
+        { error: 'Só o Responsável pode atualizar a tarefa. Entre com o PIN no Observatório.' },
+        401
+      );
     }
 
-    const missoesFixas = Array.from(primeiraPorArea.values()).map(
-      formatarMissaoParaTela
-    );
+    const body = await request.json();
+    const missionId = String(body?.missionId || '').trim();
+    const activeTask = String(body?.activeTask ?? '').trim();
 
-    return jsonSemCache(missoesFixas);
-  } catch (error) {
-    console.error('Erro ao buscar missões:', error);
+    if (!missionId) {
+      return jsonSemCache({ error: 'missionId é obrigatório' }, 400);
+    }
 
-    return jsonSemCache(
-      { error: 'Erro ao buscar missões.' },
-      500
-    );
-  }
-}
+    if (!activeTask) {
+      return jsonSemCache({ error: 'activeTask não pode ficar vazia' }, 400);
+    }
 
-/**
- * POST /api/missoes
- *
- * Bloqueado de propósito: não se cria mais card de missão novo.
- * O Responsável deve atualizar a tarefa do card fixo usando:
- * PATCH /api/missoes/tarefa
- */
-export async function POST() {
-  if (!isResponsavelAutorizado()) {
-    return jsonSemCache(
-      {
-        error:
-          'Somente o Responsável pode gerenciar tarefas. Entre com o PIN no Observatório.',
+    if (activeTask.length > 500) {
+      return jsonSemCache({ error: 'activeTask muito longa (máx. 500 caracteres)' }, 400);
+    }
+
+    const missao = await prisma.mission.findUnique({
+      where: { id: missionId },
+    });
+
+    if (!missao) {
+      return jsonSemCache({ error: 'Missão não encontrada' }, 404);
+    }
+
+    // Só permite editar carta/trilha fixa
+    if (missao.isTrack === false) {
+      return jsonSemCache(
+        {
+          error:
+            'Esta não é uma missão fixa do painel. Atualize só as cartas isTrack (EXPLORADOR, CRIADOR...).',
+        },
+        400
+      );
+    }
+
+    const data: {
+      activeTask: string;
+      xpReward?: number;
+      updatedAt: Date;
+    } = {
+      activeTask,
+      updatedAt: new Date(),
+    };
+
+    if (body?.xpReward !== undefined && body?.xpReward !== null && body?.xpReward !== '') {
+      const xp = Number(body.xpReward);
+      if (Number.isNaN(xp) || xp < 0 || xp > 1000) {
+        return jsonSemCache({ error: 'xpReward inválido (use 0 a 1000)' }, 400);
+      }
+      data.xpReward = Math.round(xp);
+    }
+
+    const atualizada = await prisma.mission.update({
+      where: { id: missionId },
+      data,
+    });
+
+    return jsonSemCache({
+      ok: true,
+      mission: {
+        id: atualizada.id,
+        title: atualizada.title,
+        description: atualizada.description,
+        activeTask: atualizada.activeTask,
+        skillArea: atualizada.skillArea,
+        xpReward: atualizada.xpReward,
+        isTrack: atualizada.isTrack,
+        updatedAt: atualizada.updatedAt,
       },
-      401
-    );
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar tarefa da missão:', error);
+    return jsonSemCache({ error: 'Erro ao atualizar tarefa da missão' }, 500);
   }
-
-  return jsonSemCache(
-    {
-      error:
-        'Não criamos cards de missão novos. Atualize a tarefa dentro de uma missão fixa.',
-      code: 'USE_TAREFA_ENDPOINT',
-    },
-    400
-  );
 }
