@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { prisma } from '../../../../lib/prisma';
+import { prisma } from '../../../lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -20,18 +20,6 @@ function responsavelAutenticado() {
   return Boolean(token);
 }
 
-/**
- * PATCH /api/missoes/tarefa
- * Responsável atualiza a TAREFA DO DIA de uma missão fixa (isTrack).
- * NÃO cria card novo.
- *
- * Body JSON:
- * {
- *   "missionId": "uuid-da-missao-fixa",
- *   "activeTask": "Ler um texto em inglês e contar 3 palavras novas",
- *   "xpReward": 25   // opcional
- * }
- */
 export async function PATCH(request: Request) {
   try {
     if (!responsavelAutenticado()) {
@@ -65,7 +53,6 @@ export async function PATCH(request: Request) {
       return jsonSemCache({ error: 'Missão não encontrada' }, 404);
     }
 
-    // Só permite editar carta/trilha fixa
     if (missao.isTrack === false) {
       return jsonSemCache(
         {
