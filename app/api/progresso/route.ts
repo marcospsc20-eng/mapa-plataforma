@@ -1,8 +1,28 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { prisma } from '../../../lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const COOKIE_NAME = 'mapa_responsavel';
+
+function getParentPin() {
+  return process.env.PARENT_PIN || '2580';
+}
+
+function makeToken(pin: string) {
+  return Buffer.from(`thaju-responsavel:${pin}`).toString('base64url');
+}
+
+function isResponsavelAutorizado() {
+  const jar = cookies();
+  const cookie = jar.get(COOKIE_NAME)?.value;
+
+  if (!cookie) return false;
+
+  return cookie === makeToken(getParentPin());
+}
 
 // Ler o progresso atual do Thales
 export async function GET() {
@@ -53,6 +73,13 @@ export async function GET() {
 // Creditar XP ao Thales e marcar a missão como aprovada (usado pelo Observatório)
 export async function POST(request: Request) {
   try {
+    if (!isResponsavelAutorizado()) {
+      return NextResponse.json(
+        { error: 'Só o Responsável pode aprovar missões. Entre com o PIN no Observatório.' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const xpAdicional = Number(body?.xpAdicional || 0);
     const logId = body?.logId ? String(body.logId) : '';

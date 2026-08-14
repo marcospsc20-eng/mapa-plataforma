@@ -1,8 +1,28 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { prisma } from '../../../lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const COOKIE_NAME = 'mapa_responsavel';
+
+function getParentPin() {
+  return process.env.PARENT_PIN || '2580';
+}
+
+function makeToken(pin: string) {
+  return Buffer.from(`thaju-responsavel:${pin}`).toString('base64url');
+}
+
+function isResponsavelAutorizado() {
+  const jar = cookies();
+  const cookie = jar.get(COOKIE_NAME)?.value;
+
+  if (!cookie) return false;
+
+  return cookie === makeToken(getParentPin());
+}
 
 function jsonSemCache(data: unknown, status = 200) {
   return NextResponse.json(data, {
@@ -157,6 +177,13 @@ export async function POST(request: Request) {
 
     // RESPONSÁVEL confirma
     if (action === 'confirmar') {
+      if (!isResponsavelAutorizado()) {
+        return jsonSemCache(
+          { error: 'Só o Responsável pode confirmar a mesada. Entre com o PIN no Observatório.' },
+          401
+        );
+      }
+
       const transferId = String(body?.transferId || '');
 
       let pendente = null;
