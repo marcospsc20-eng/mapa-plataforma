@@ -2,7 +2,7 @@ import React from 'react';
 import './globals.css';
 
 export const metadata = {
-  title: 'Codinome MAPA',
+  title: 'THAJU',
   description: 'Plataforma Interativa da Família',
 };
 

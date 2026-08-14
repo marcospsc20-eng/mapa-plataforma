@@ -325,7 +325,7 @@ export default function Home() {
         <div className="max-w-xl w-full text-center space-y-8 bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-xl">
           <div className="flex justify-center items-center gap-2 text-slate-400 font-medium text-xs tracking-widest uppercase">
             <Sparkles className="w-4 h-4 text-indigo-400" />
-            <span>THAJU · Método MAPA</span>
+            <span>THAJU</span>
           </div>
 
           <div className="space-y-2">
