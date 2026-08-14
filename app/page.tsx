@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Sparkles,
   Compass,
@@ -125,7 +126,10 @@ function mapMissao(api: MissaoApi): MissaoCard {
   };
 }
 
+const PAPEL_STORAGE_KEY = 'thaju_papel';
+
 export default function Home() {
+  const router = useRouter();
   const [papelAtivo, setPapelAtivo] = useState<PapelAtivo>('escolha');
   const [abaAtiva, setAbaAtiva] = useState<'missoes' | 'cofre'>('missoes');
 
@@ -147,6 +151,16 @@ export default function Home() {
   const [solicitandoMesada, setSolicitandoMesada] = useState(false);
   const [statusMesada, setStatusMesada] = useState<StatusMesada>('idle');
   const [mensagemMesada, setMensagemMesada] = useState('');
+
+  useEffect(() => {
+    const papelSalvo = window.localStorage.getItem(PAPEL_STORAGE_KEY);
+
+    if (papelSalvo === 'explorador') {
+      setPapelAtivo('explorador');
+    } else if (papelSalvo === 'responsavel') {
+      router.replace('/observatorio');
+    }
+  }, [router]);
 
   useEffect(() => {
     let ativo = true;
@@ -341,6 +355,7 @@ export default function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
             <button
               onClick={() => {
+                window.localStorage.setItem(PAPEL_STORAGE_KEY, 'explorador');
                 setPapelAtivo('explorador');
                 setAbaAtiva('missoes');
               }}
@@ -361,6 +376,9 @@ export default function Home() {
 
             <a
               href="/observatorio"
+              onClick={() => {
+                window.localStorage.setItem(PAPEL_STORAGE_KEY, 'responsavel');
+              }}
               className="group bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 transition text-left"
             >
               <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center justify-center mb-4">
@@ -402,7 +420,10 @@ export default function Home() {
 
             <div className="flex items-center gap-3 flex-wrap">
               <button
-                onClick={() => setPapelAtivo('escolha')}
+                onClick={() => {
+                  window.localStorage.removeItem(PAPEL_STORAGE_KEY);
+                  setPapelAtivo('escolha');
+                }}
                 className="text-xs font-medium bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-xl text-slate-300 border border-slate-700/50 transition cursor-pointer flex items-center gap-1.5"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />

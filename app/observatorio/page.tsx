@@ -438,6 +438,7 @@ export default function Observatorio() {
 
           <Link
             href="/"
+            onClick={() => window.localStorage.removeItem('thaju_papel')}
             className="flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-slate-200 transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -474,6 +475,7 @@ export default function Observatorio() {
 
             <Link
               href="/"
+              onClick={() => window.localStorage.removeItem('thaju_papel')}
               className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
             >
               <ArrowLeft className="w-4 h-4" /> Voltar ao App do Thales
