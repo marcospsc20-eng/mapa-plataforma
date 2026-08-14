@@ -1,15 +1,28 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
+import { getFamilyChild, getFamilySession, getResponsavelSession } from '../../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Listar envios aguardando validação (para o Observatório)
+// Listar envios aguardando validação da própria família (para o Observatório)
 export async function GET() {
   try {
+    const sessao = getResponsavelSession();
+
+    if (!sessao) {
+      return NextResponse.json(
+        { error: 'Só o Responsável pode ver os envios do diário. Entre com e-mail e senha no Observatório.' },
+        { status: 401 }
+      );
+    }
+
     const pendentes = await prisma.missionLog.findMany({
       where: {
         status: 'PENDING_VALIDATION',
+        user: {
+          familyId: sessao.familyId,
+        },
       },
       include: {
         mission: true,
@@ -45,9 +58,18 @@ export async function GET() {
   }
 }
 
-// Thales envia registro de missão para validação dos pais
+// A criança envia registro de missão para validação dos pais
 export async function POST(request: Request) {
   try {
+    const sessao = getFamilySession();
+
+    if (!sessao) {
+      return NextResponse.json(
+        { error: 'Este aparelho não está vinculado a nenhuma família.' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const missionId = String(body?.missionId || '');
     const feedbackText = String(body?.feedbackText || '').trim();
@@ -66,16 +88,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const thales = await prisma.user.findFirst({
-      where: {
-        name: 'Thales',
-        role: 'CHILD',
-      },
-    });
+    const crianca = await getFamilyChild(sessao.familyId);
 
-    if (!thales) {
+    if (!crianca) {
       return NextResponse.json(
-        { error: 'Usuário Thales não encontrado' },
+        { error: 'Criança da família não encontrada' },
         { status: 404 }
       );
     }
@@ -84,7 +101,7 @@ export async function POST(request: Request) {
       where: { id: missionId },
     });
 
-    if (!missao) {
+    if (!missao || missao.familyId !== sessao.familyId) {
       return NextResponse.json(
         { error: 'Missão não encontrada' },
         { status: 404 }
@@ -93,7 +110,7 @@ export async function POST(request: Request) {
 
     const log = await prisma.missionLog.create({
       data: {
-        userId: thales.id,
+        userId: crianca.id,
         missionId: missao.id,
         status: 'PENDING_VALIDATION',
         feedbackText,
@@ -103,7 +120,7 @@ export async function POST(request: Request) {
     // Também guarda no diário/memória
     await prisma.journalEntry.create({
       data: {
-        userId: thales.id,
+        userId: crianca.id,
         question: `Registro da missão: ${missao.title}`,
         type: 'TEXT',
         content: feedbackText,

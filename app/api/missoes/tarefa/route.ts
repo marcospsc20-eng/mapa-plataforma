@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { prisma } from '../../../../lib/prisma';
+import { getResponsavelSession } from '../../../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const COOKIE_NAME = 'mapa_responsavel';
 
 function jsonSemCache(data: unknown, status = 200) {
   return NextResponse.json(data, {
@@ -16,27 +14,10 @@ function jsonSemCache(data: unknown, status = 200) {
   });
 }
 
-function getParentPin() {
-  return process.env.PARENT_PIN || '2580';
-}
-
-function makeToken(pin: string) {
-  return Buffer.from(`thaju-responsavel:${pin}`).toString('base64url');
-}
-
-function isResponsavelAutorizado() {
-  const jar = cookies();
-  const cookie = jar.get(COOKIE_NAME)?.value;
-
-  if (!cookie) return false;
-
-  return cookie === makeToken(getParentPin());
-}
-
 /**
  * PATCH /api/missoes/tarefa
- * Responsável atualiza a TAREFA DO DIA de uma missão fixa (isTrack).
- * NÃO cria card novo.
+ * Responsável atualiza a TAREFA DO DIA de uma missão fixa (isTrack)
+ * da PRÓPRIA família. NÃO cria card novo.
  *
  * Body JSON:
  * {
@@ -47,9 +28,11 @@ function isResponsavelAutorizado() {
  */
 export async function PATCH(request: Request) {
   try {
-    if (!isResponsavelAutorizado()) {
+    const sessao = getResponsavelSession();
+
+    if (!sessao) {
       return jsonSemCache(
-        { error: 'Só o Responsável pode atualizar a tarefa. Entre com o PIN no Observatório.' },
+        { error: 'Só o Responsável pode atualizar a tarefa. Entre com e-mail e senha no Observatório.' },
         401
       );
     }
@@ -76,6 +59,10 @@ export async function PATCH(request: Request) {
 
     if (!missao) {
       return jsonSemCache({ error: 'Missão não encontrada' }, 404);
+    }
+
+    if (missao.familyId !== sessao.familyId) {
+      return jsonSemCache({ error: 'Essa missão não pertence à sua família.' }, 403);
     }
 
     if (missao.isTrack === false) {

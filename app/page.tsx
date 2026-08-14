@@ -152,14 +152,43 @@ export default function Home() {
   const [statusMesada, setStatusMesada] = useState<StatusMesada>('idle');
   const [mensagemMesada, setMensagemMesada] = useState('');
 
-  useEffect(() => {
-    const papelSalvo = window.localStorage.getItem(PAPEL_STORAGE_KEY);
+  const [statusFamilia, setStatusFamilia] = useState<
+    'carregando' | 'sem-familia' | 'com-familia'
+  >('carregando');
 
-    if (papelSalvo === 'explorador') {
-      setPapelAtivo('explorador');
-    } else if (papelSalvo === 'responsavel') {
-      router.replace('/observatorio');
+  useEffect(() => {
+    let ativo = true;
+
+    async function checarFamilia() {
+      try {
+        const res = await fetch('/api/auth/responsavel', { cache: 'no-store' });
+        const dados = await res.json();
+        if (!ativo) return;
+
+        if (dados?.familyLinked) {
+          setStatusFamilia('com-familia');
+
+          const papelSalvo = window.localStorage.getItem(PAPEL_STORAGE_KEY);
+          if (papelSalvo === 'explorador') {
+            setPapelAtivo('explorador');
+          } else if (papelSalvo === 'responsavel') {
+            router.replace('/observatorio');
+          }
+        } else {
+          window.localStorage.removeItem(PAPEL_STORAGE_KEY);
+          setStatusFamilia('sem-familia');
+        }
+      } catch (error) {
+        console.error(error);
+        if (ativo) setStatusFamilia('sem-familia');
+      }
     }
+
+    checarFamilia();
+
+    return () => {
+      ativo = false;
+    };
   }, [router]);
 
   useEffect(() => {
@@ -335,7 +364,62 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 font-sans">
-      {papelAtivo === 'escolha' ? (
+      {statusFamilia === 'carregando' ? (
+        <div className="flex items-center gap-3 text-slate-400">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Carregando...
+        </div>
+      ) : statusFamilia === 'sem-familia' ? (
+        <div className="max-w-xl w-full text-center space-y-8 bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-xl">
+          <div className="flex justify-center items-center gap-2 text-slate-400 font-medium text-xs tracking-widest uppercase">
+            <Sparkles className="w-4 h-4 text-indigo-400" />
+            <span>THAJU</span>
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold text-white tracking-tight">Bem-vindo!</h1>
+            <p className="text-slate-400 text-base">
+              Entre com a conta da sua família, ou crie uma nova família pra começar.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
+            <a
+              href="/entrar"
+              className="group bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-indigo-500/40 rounded-2xl p-5 transition text-left"
+            >
+              <div className="w-11 h-11 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 flex items-center justify-center mb-4">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <h2 className="text-lg font-bold text-white">Já tenho conta</h2>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Entrar com o e-mail e senha da minha família.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-indigo-300">
+                Entrar
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </span>
+            </a>
+
+            <a
+              href="/cadastro"
+              className="group bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-5 transition text-left"
+            >
+              <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center justify-center mb-4">
+                <Rocket className="w-5 h-5" />
+              </div>
+              <h2 className="text-lg font-bold text-white">Criar minha família</h2>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Cadastrar a família e começar a usar o THAJU.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-emerald-300">
+                Criar agora
+                <Rocket className="w-3.5 h-3.5" />
+              </span>
+            </a>
+          </div>
+        </div>
+      ) : papelAtivo === 'escolha' ? (
         <div className="max-w-xl w-full text-center space-y-8 bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-xl">
           <div className="flex justify-center items-center gap-2 text-slate-400 font-medium text-xs tracking-widest uppercase">
             <Sparkles className="w-4 h-4 text-indigo-400" />

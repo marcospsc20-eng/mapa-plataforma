@@ -1,28 +1,9 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { prisma } from '../../../lib/prisma';
+import { getFamilyChild, getFamilySession, getResponsavelSession } from '../../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const COOKIE_NAME = 'mapa_responsavel';
-
-function getParentPin() {
-  return process.env.PARENT_PIN || '2580';
-}
-
-function makeToken(pin: string) {
-  return Buffer.from(`thaju-responsavel:${pin}`).toString('base64url');
-}
-
-function isResponsavelAutorizado() {
-  const jar = cookies();
-  const cookie = jar.get(COOKIE_NAME)?.value;
-
-  if (!cookie) return false;
-
-  return cookie === makeToken(getParentPin());
-}
 
 function jsonSemCache(data: unknown, status = 200) {
   return NextResponse.json(data, {
@@ -53,23 +34,24 @@ function formatarTransferencia(transfer: {
   };
 }
 
-// GET: ver se existe mesada pendente do Thales
+// GET: ver se existe mesada pendente da criança desta família
 export async function GET() {
   try {
-    const thales = await prisma.user.findFirst({
-      where: {
-        name: 'Thales',
-        role: 'CHILD',
-      },
-    });
+    const sessao = getFamilySession();
 
-    if (!thales) {
-      return jsonSemCache({ error: 'Usuário Thales não encontrado' }, 404);
+    if (!sessao) {
+      return jsonSemCache({ error: 'Este aparelho não está vinculado a nenhuma família.' }, 401);
+    }
+
+    const crianca = await getFamilyChild(sessao.familyId);
+
+    if (!crianca) {
+      return jsonSemCache({ error: 'Criança da família não encontrada' }, 404);
     }
 
     const pendente = await prisma.allowanceTransfer.findFirst({
       where: {
-        userId: thales.id,
+        userId: crianca.id,
         status: 'PENDING',
       },
       orderBy: {
@@ -86,7 +68,7 @@ export async function GET() {
 
     const ultima = await prisma.allowanceTransfer.findFirst({
       where: {
-        userId: thales.id,
+        userId: crianca.id,
       },
       orderBy: {
         requestedAt: 'desc',
@@ -104,25 +86,26 @@ export async function GET() {
 }
 
 // POST:
-// - action: "solicitar"  -> Thales pede a mesada
-// - action: "confirmar"  -> Responsável marca como feita
+// - action: "solicitar"  -> a criança pede a mesada
+// - action: "confirmar"  -> o Responsável marca como feita
 export async function POST(request: Request) {
   try {
+    const familySessao = getFamilySession();
+
+    if (!familySessao) {
+      return jsonSemCache({ error: 'Este aparelho não está vinculado a nenhuma família.' }, 401);
+    }
+
     const body = await request.json();
     const action = String(body?.action || '').toLowerCase();
 
-    const thales = await prisma.user.findFirst({
-      where: {
-        name: 'Thales',
-        role: 'CHILD',
-      },
-    });
+    const crianca = await getFamilyChild(familySessao.familyId);
 
-    if (!thales) {
-      return jsonSemCache({ error: 'Usuário Thales não encontrado' }, 404);
+    if (!crianca) {
+      return jsonSemCache({ error: 'Criança da família não encontrada' }, 404);
     }
 
-    // THALES solicita
+    // Criança solicita
     if (action === 'solicitar') {
       const amountFree = Number(body?.amountFree ?? 80);
       const amountSave = Number(body?.amountSave ?? 20);
@@ -141,7 +124,7 @@ export async function POST(request: Request) {
 
       const jaPendente = await prisma.allowanceTransfer.findFirst({
         where: {
-          userId: thales.id,
+          userId: crianca.id,
           status: 'PENDING',
         },
         orderBy: {
@@ -160,7 +143,7 @@ export async function POST(request: Request) {
 
       const criada = await prisma.allowanceTransfer.create({
         data: {
-          userId: thales.id,
+          userId: crianca.id,
           amountFree,
           amountSave,
           status: 'PENDING',
@@ -177,9 +160,11 @@ export async function POST(request: Request) {
 
     // RESPONSÁVEL confirma
     if (action === 'confirmar') {
-      if (!isResponsavelAutorizado()) {
+      const responsavelSessao = getResponsavelSession();
+
+      if (!responsavelSessao) {
         return jsonSemCache(
-          { error: 'Só o Responsável pode confirmar a mesada. Entre com o PIN no Observatório.' },
+          { error: 'Só o Responsável pode confirmar a mesada. Entre com e-mail e senha no Observatório.' },
           401
         );
       }
@@ -192,13 +177,13 @@ export async function POST(request: Request) {
         pendente = await prisma.allowanceTransfer.findFirst({
           where: {
             id: transferId,
-            userId: thales.id,
+            userId: crianca.id,
           },
         });
       } else {
         pendente = await prisma.allowanceTransfer.findFirst({
           where: {
-            userId: thales.id,
+            userId: crianca.id,
             status: 'PENDING',
           },
           orderBy: {

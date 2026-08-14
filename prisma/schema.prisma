@@ -26,6 +26,7 @@ model User {
   familyId  String
   name      String
   email     String?  @unique
+  password  String?
   role      String   @default("CHILD") // PARENT ou CHILD
   avatarUrl String?
   createdAt DateTime @default(now())

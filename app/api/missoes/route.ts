@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { prisma } from '../../../lib/prisma';
+import { getFamilySession, getResponsavelSession } from '../../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const COOKIE_NAME = 'mapa_responsavel';
 
 function jsonSemCache(data: unknown, status = 200) {
   return NextResponse.json(data, {
@@ -14,23 +12,6 @@ function jsonSemCache(data: unknown, status = 200) {
       'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
     },
   });
-}
-
-function getParentPin() {
-  return process.env.PARENT_PIN || '2580';
-}
-
-function makeToken(pin: string) {
-  return Buffer.from(`thaju-responsavel:${pin}`).toString('base64url');
-}
-
-function isResponsavelAutorizado() {
-  const jar = cookies();
-  const cookie = jar.get(COOKIE_NAME)?.value;
-
-  if (!cookie) return false;
-
-  return cookie === makeToken(getParentPin());
 }
 
 type MissaoDoBanco = {
@@ -79,7 +60,8 @@ function formatarMissaoParaTela(missao: MissaoDoBanco) {
 /**
  * GET /api/missoes
  *
- * Retorna somente as missões fixas do painel do Thales.
+ * Retorna somente as missões fixas do painel do Thales, da família
+ * vinculada a este aparelho (cookie thaju_family).
  *
  * Regra:
  * - Missão é um card estável.
@@ -89,9 +71,16 @@ function formatarMissaoParaTela(missao: MissaoDoBanco) {
  */
 export async function GET() {
   try {
+    const sessao = getFamilySession();
+
+    if (!sessao) {
+      return jsonSemCache({ error: 'Este aparelho não está vinculado a nenhuma família.' }, 401);
+    }
+
     const todasAsMissoes = await prisma.mission.findMany({
       where: {
         isTrack: true,
+        familyId: sessao.familyId,
       },
       orderBy: {
         createdAt: 'asc',
@@ -139,11 +128,11 @@ export async function GET() {
  * PATCH /api/missoes/tarefa
  */
 export async function POST() {
-  if (!isResponsavelAutorizado()) {
+  if (!getResponsavelSession()) {
     return jsonSemCache(
       {
         error:
-          'Somente o Responsável pode gerenciar tarefas. Entre com o PIN no Observatório.',
+          'Somente o Responsável pode gerenciar tarefas. Entre com e-mail e senha no Observatório.',
       },
       401
     );

@@ -84,8 +84,9 @@ function formatarReais(valor: number) {
 export default function Observatorio() {
   const [autenticado, setAutenticado] = useState(false);
   const [checandoSessao, setChecandoSessao] = useState(true);
-  const [pin, setPin] = useState('');
-  const [erroPin, setErroPin] = useState('');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [erroLogin, setErroLogin] = useState('');
   const [entrando, setEntrando] = useState(false);
 
   const [progresso, setProgresso] = useState<ProgressoThales | null>(null);
@@ -130,30 +131,30 @@ export default function Observatorio() {
     }
   }
 
-  async function entrarComPin() {
+  async function entrarComLogin() {
     try {
       setEntrando(true);
-      setErroPin('');
+      setErroLogin('');
 
       const res = await fetch('/api/auth/responsavel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: pin.trim() }),
+        body: JSON.stringify({ email: email.trim(), password: senha }),
       });
 
       const dados = await res.json();
 
       if (!res.ok) {
-        setErroPin(dados?.error || 'PIN incorreto');
+        setErroLogin(dados?.error || 'E-mail ou senha incorretos.');
         setAutenticado(false);
         return;
       }
 
       setAutenticado(true);
-      setPin('');
+      setSenha('');
     } catch (error) {
       console.error(error);
-      setErroPin('Não foi possível validar o PIN agora.');
+      setErroLogin('Não foi possível validar o login agora.');
       setAutenticado(false);
     } finally {
       setEntrando(false);
@@ -169,7 +170,7 @@ export default function Observatorio() {
       console.error(error);
     } finally {
       setAutenticado(false);
-      setPin('');
+      setSenha('');
     }
   }
 
@@ -396,34 +397,49 @@ export default function Observatorio() {
             </div>
             <h1 className="text-2xl font-bold text-white">Área do Responsável</h1>
             <p className="text-sm text-slate-400">
-              Digite o PIN da família para abrir o Observatório.
+              Entre com o e-mail e a senha da família para abrir o Observatório.
             </p>
           </div>
 
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-slate-300">PIN</label>
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={8}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') entrarComPin();
-              }}
-              placeholder="••••"
-              className="w-full rounded-xl bg-slate-950 border border-slate-700 text-white text-center text-2xl tracking-[0.4em] py-3 outline-none focus:border-emerald-500"
-            />
-            {erroPin && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-slate-300">E-mail</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') entrarComLogin();
+                }}
+                placeholder="seuemail@exemplo.com"
+                className="w-full rounded-xl bg-slate-950 border border-slate-700 text-white py-3 px-4 outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-slate-300">Senha</label>
+              <input
+                type="password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') entrarComLogin();
+                }}
+                placeholder="••••••••"
+                className="w-full rounded-xl bg-slate-950 border border-slate-700 text-white py-3 px-4 outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            {erroLogin && (
               <p className="text-sm text-rose-300 bg-rose-950/40 border border-rose-500/30 rounded-xl px-3 py-2">
-                {erroPin}
+                {erroLogin}
               </p>
             )}
           </div>
 
           <button
-            onClick={entrarComPin}
-            disabled={entrando || pin.length < 4}
+            onClick={entrarComLogin}
+            disabled={entrando || !email.trim() || senha.length < 1}
             className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold transition flex items-center justify-center gap-2"
           >
             {entrando ? (

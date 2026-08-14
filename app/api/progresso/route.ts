@@ -1,59 +1,44 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { prisma } from '../../../lib/prisma';
+import { getFamilyChild, getFamilySession, getResponsavelSession } from '../../../lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const COOKIE_NAME = 'mapa_responsavel';
-
-function getParentPin() {
-  return process.env.PARENT_PIN || '2580';
-}
-
-function makeToken(pin: string) {
-  return Buffer.from(`thaju-responsavel:${pin}`).toString('base64url');
-}
-
-function isResponsavelAutorizado() {
-  const jar = cookies();
-  const cookie = jar.get(COOKIE_NAME)?.value;
-
-  if (!cookie) return false;
-
-  return cookie === makeToken(getParentPin());
-}
-
-// Ler o progresso atual do Thales
+// Ler o progresso atual da criança desta família
 export async function GET() {
   try {
-    const thales = await prisma.user.findFirst({
-      where: {
-        name: 'Thales',
-        role: 'CHILD',
-      },
-      include: {
-        progress: true,
-      },
+    const sessao = getFamilySession();
+
+    if (!sessao) {
+      return NextResponse.json(
+        { error: 'Este aparelho não está vinculado a nenhuma família.' },
+        { status: 401 }
+      );
+    }
+
+    const crianca = await prisma.user.findFirst({
+      where: { familyId: sessao.familyId, role: 'CHILD' },
+      include: { progress: true },
     });
 
-    if (!thales || !thales.progress) {
+    if (!crianca || !crianca.progress) {
       return NextResponse.json(
-        { error: 'Progresso do Thales não encontrado' },
+        { error: 'Progresso da criança não encontrado' },
         { status: 404 }
       );
     }
 
     return NextResponse.json(
       {
-        userId: thales.id,
-        name: thales.name,
-        totalXp: thales.progress.totalXp,
-        level: thales.progress.level,
-        xpExplorador: thales.progress.xpExplorador,
-        xpCriador: thales.progress.xpCriador,
-        xpAtleta: thales.progress.xpAtleta,
-        xpCientista: thales.progress.xpCientista,
+        userId: crianca.id,
+        name: crianca.name,
+        totalXp: crianca.progress.totalXp,
+        level: crianca.progress.level,
+        xpExplorador: crianca.progress.xpExplorador,
+        xpCriador: crianca.progress.xpCriador,
+        xpAtleta: crianca.progress.xpAtleta,
+        xpCientista: crianca.progress.xpCientista,
       },
       {
         headers: {
@@ -70,12 +55,14 @@ export async function GET() {
   }
 }
 
-// Creditar XP ao Thales e marcar a missão como aprovada (usado pelo Observatório)
+// Creditar XP à criança e marcar a missão como aprovada (usado pelo Observatório)
 export async function POST(request: Request) {
   try {
-    if (!isResponsavelAutorizado()) {
+    const sessao = getResponsavelSession();
+
+    if (!sessao) {
       return NextResponse.json(
-        { error: 'Só o Responsável pode aprovar missões. Entre com o PIN no Observatório.' },
+        { error: 'Só o Responsável pode aprovar missões. Entre com e-mail e senha no Observatório.' },
         { status: 401 }
       );
     }
@@ -98,19 +85,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const thales = await prisma.user.findFirst({
-      where: {
-        name: 'Thales',
-        role: 'CHILD',
-      },
-      include: {
-        progress: true,
-      },
+    const crianca = await getFamilyChild(sessao.familyId);
+
+    if (!crianca) {
+      return NextResponse.json(
+        { error: 'Criança da família não encontrada' },
+        { status: 404 }
+      );
+    }
+
+    const progressoAtual = await prisma.childProgress.findUnique({
+      where: { userId: crianca.id },
     });
 
-    if (!thales || !thales.progress) {
+    if (!progressoAtual) {
       return NextResponse.json(
-        { error: 'Progresso do Thales não encontrado' },
+        { error: 'Progresso da criança não encontrado' },
         { status: 404 }
       );
     }
@@ -130,15 +120,22 @@ export async function POST(request: Request) {
       );
     }
 
+    if (log.userId !== crianca.id) {
+      return NextResponse.json(
+        { error: 'Esse registro não pertence à sua família.' },
+        { status: 403 }
+      );
+    }
+
     // Já foi aprovada antes? Não soma XP de novo e não deixa voltar pra lista
     if (log.status === 'APPROVED' || log.status === 'COMPLETED') {
       return NextResponse.json({
         ok: true,
         alreadyApproved: true,
-        name: thales.name,
+        name: crianca.name,
         xpAdicionado: 0,
-        totalXp: thales.progress.totalXp,
-        level: thales.progress.level,
+        totalXp: progressoAtual.totalXp,
+        level: progressoAtual.level,
       });
     }
 
@@ -150,7 +147,7 @@ export async function POST(request: Request) {
     }
 
     const area = (log.mission?.skillArea || '').toUpperCase();
-    const novoTotalXp = thales.progress.totalXp + xpAdicional;
+    const novoTotalXp = progressoAtual.totalXp + xpAdicional;
     const novoLevel = Math.max(1, Math.floor(novoTotalXp / 100) + 1);
 
     // Prepara o XP por área (quando fizer sentido)
@@ -167,13 +164,13 @@ export async function POST(request: Request) {
     };
 
     if (area === 'EXPLORADOR') {
-      dataProgresso.xpExplorador = thales.progress.xpExplorador + xpAdicional;
+      dataProgresso.xpExplorador = progressoAtual.xpExplorador + xpAdicional;
     } else if (area === 'CRIADOR') {
-      dataProgresso.xpCriador = thales.progress.xpCriador + xpAdicional;
+      dataProgresso.xpCriador = progressoAtual.xpCriador + xpAdicional;
     } else if (area === 'ATLETA' || area === 'CORPO') {
-      dataProgresso.xpAtleta = thales.progress.xpAtleta + xpAdicional;
+      dataProgresso.xpAtleta = progressoAtual.xpAtleta + xpAdicional;
     } else if (area === 'CIENTISTA' || area === 'CURIOSIDADE') {
-      dataProgresso.xpCientista = thales.progress.xpCientista + xpAdicional;
+      dataProgresso.xpCientista = progressoAtual.xpCientista + xpAdicional;
     }
 
     // 1) Marca a missão como APROVADA (sai da lista do Observatório)
@@ -187,13 +184,13 @@ export async function POST(request: Request) {
 
     // 2) Credita o XP
     const progressAtualizado = await prisma.childProgress.update({
-      where: { id: thales.progress.id },
+      where: { id: progressoAtual.id },
       data: dataProgresso,
     });
 
     return NextResponse.json({
       ok: true,
-      name: thales.name,
+      name: crianca.name,
       xpAdicionado: xpAdicional,
       totalXp: progressAtualizado.totalXp,
       level: progressAtualizado.level,
